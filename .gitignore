@@ -216,3 +216,23 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Workaholic-Willy specific ignores:
+
+# 1. External dependencies like:
+#   - Coal
+#   - CuRobo
+#   - Others to follow
+deps/*
+
+# 2. Logs from the software:
+logs/*
+
+# 3. Optional model weights:
+#   - Grounding Dino
+#   - SAM2
+#   - Whisper
+#   - Simplifier
+#   - Mediapipe
+assets/*
