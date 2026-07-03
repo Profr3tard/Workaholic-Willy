@@ -1,0 +1,414 @@
+# Robot Configuration
+#
+# vendor: which driver create_arm() should build. Switch to "kuka" to
+#         activate the KUKA EthernetKRL driver and edit the matching
+#         `kuka:` block below. Switch to "sim" to drive the Isaac /
+#         pure-Python mock arm via the `sim:` block. The kuka_eki.yaml
+#         template under `templates/` is a safe starting point.
+robot:
+  vendor: "ur"
+
+  # ----------------------------------------------------------------------
+  # UR-only block. Only consulted when robot.vendor == "ur".
+  # ----------------------------------------------------------------------
+  ur:
+    ip: "192.168.1.100"
+    rtde_frequency: 0.0        # 0 = default (125 Hz)
+
+  # ----------------------------------------------------------------------
+  # SIM block (Isaac-Sim or pure-Python mock). Only consulted when
+  # robot.vendor == "sim". Set mock_mode: true to run a deterministic
+  # CI-friendly mock that requires no NVIDIA / Isaac install.
+  # ----------------------------------------------------------------------
+  sim:
+    enabled: false
+    mock_mode: false
+    backend: "isaac"
+    scene: null
+    robot_prim_path: null
+    gripper_prim_path: null
+    headless: true
+    reset_on_connect: true
+
+  # ----------------------------------------------------------------------
+  # Dummy driver block. No knobs today; present so the YAML shape stays
+  # stable when projects opt into the dummy backend.
+  # ----------------------------------------------------------------------
+  dummy: {}
+
+  motion_limits:
+    max_velocity: 1.0          # rad/s
+    max_acceleration: 0.5      # rad/s²
+
+  workspace_limits:            # Cartesian box in mm
+    x_min: -500.0
+    x_max:  500.0
+    y_min: -500.0
+    y_max:  500.0
+    z_min:  100.0              # keep above table
+    z_max:  600.0
+
+  gripper:
+    vendor: "robotiq"
+    max_width_mm: 150.0        # physical gripper opening limit
+    min_width_mm: 5.0          # smallest meaningful grip
+
+  calibration:
+    # RMSE above this is held for explicit operator review before extrinsics
+    # are applied. Anything within `quality_bands_mm.good` auto-applies.
+    quality_threshold_mm: 2.5
+
+    # Fraction of the operator's global speed setting forced while the
+    # eye-to-hand routine is running. Restored on exit. Range (0, 1].
+    speed_scale: 0.25
+
+    # Mechanical settle time after each pose move, before image capture.
+    settle_time_s: 0.5
+
+    # Random orientation deviation (deg) when generating calibration poses.
+    orientation_spread_deg: 15.0
+
+    # Pose-generator retry budget per pose before giving up.
+    max_attempts_per_pose: 200
+
+    # Quality classification bands. Inclusive upper bounds.
+    quality_bands_mm:
+      excellent: 1.0
+      good:      2.5
+      marginal:  5.0
+
+  # ----------------------------------------------------------------------
+  # Vendor-neutral safety knobs. Enforced *in addition to* controller-side
+  # safety (UR safety planes, KUKA SafeOperation, etc.) -- the more
+  # restrictive value always wins. Tighten these for fragile end-effectors
+  # or smaller maintenance cells.
+  #
+  # Every sub-block owns an ``enforce`` flag (default true). Setting
+  # ``enforce: false`` removes that guard from the per-move
+  # SafetyPreflight pipeline at construction time; it does NOT just
+  # silence its log output. See ``backend/src/robot/safety/preflight.py``
+  # for the canonical guard order.
+  # ----------------------------------------------------------------------
+  safety:
+    # Workspace margin, subtracted from each workspace face before the workspace guard runs.
+    # (Per-move velocity/acceleration limits live in config.motion_limits, not here.)
+    limits:
+      enforce: true
+      workspace_margin_mm: 20.0
+
+    # Per-axis joint hard limits + margin. UR populates
+    # min/max from RTDE telemetry at connect; the static fallback below
+    # is only consulted on KUKA / SIM or when telemetry is unavailable.
+    joint_limits:
+      enforce: true
+      margin_deg: 5.0
+      min_deg: null
+      max_deg: null
+
+    # IK-solution quality checks: NaN, joint jump, Jacobian
+    # condition number, near-limit proximity.
+    ik_quality:
+      enforce: true
+      max_jump_rad: 1.0
+      min_singular_value: 0.005
+      max_condition_number: 250.0
+      limit_proximity_deg: 2.0
+
+    # Step-size guard between consecutive accepted targets.
+    motion_continuity:
+      enforce: true
+      max_joint_step_deg: 45.0
+      max_orientation_step_deg: 30.0
+      max_tcp_step_mm: 250.0
+
+    # Mass / CoG / inertia envelope. ``mass_kg`` is the
+    # currently mounted payload, ``max_mass_kg`` is the absolute upper
+    # bound the guard refuses to set regardless.
+    payload:
+      enforce: true
+      mass_kg: 0.0
+      max_mass_kg: 5.0
+      cog_mm:      [0.0, 0.0, 0.0]
+      inertia_kgm2: [0.0, 0.0, 0.0]
+
+    # Self-collision guard. ``capsule`` is the default
+    # always-available backend. Switch to ``fcl`` and populate
+    # ``mesh_dir`` with operator-supplied STL files to use the FCL
+    # backend (requires the optional ``python-fcl`` package).
+    self_collision:
+      enforce: true
+      backend: "capsule"
+      min_distance_mm: 10.0
+      link_radii_mm: null
+      mesh_dir: null
+      fixtures: []
+
+    # Post-Stop dwell and steady-state gating (consumed directly by
+    # the execution layer; not part of the per-move pipeline).
+    dwell:
+      dwell_after_stop_s: 0.5
+      require_steady_before_motion: true
+      steady_timeout_s: 5.0
+
+    # Optional emergency-stop input. ``"none"`` disables external
+    # checks; the hardware E-stop is always honoured by the controller.
+    emergency_stop_source: "controller"   # "none" | "controller" | "external_io"
+
+  # ----------------------------------------------------------------------
+  # Vendor-neutral grasping behaviour. Pure *behavioural* knobs:
+  # mode selection, closed-loop refinement, post-grasp verification and
+  # scene-recovery. Safety always remains under ``robot.safety`` -- the
+  # values here cannot relax a safety limit or override a mode profile's
+  # recovery allow-list. Set ``enabled: false`` on any sub-block to fall
+  # back to the trusted default path for that feature.
+  # ----------------------------------------------------------------------
+  grasping:
+    # Stable :class:`GraspMode` name resolved at runtime. One of:
+    # "easy", "auto", "closed_loop", "dense_clutter", "dense_autonomous".
+    default_mode: "auto"
+    # Upper bound on autonomous attempts per pick() call.
+    max_attempts: 5
+    # Opt-in JSONL path for production GraspAttemptRecord logging (the soak/KPI/RL data
+    # source). null -> off (byte-identical). A deployment can point it at an env var WITH a default,
+    # e.g.  record_log_path: "${WILLY_RECORD_LOG:-}"  (an empty/unset value is treated as off).
+    record_log_path: null
+
+    # Closed-loop pre-grasp refinement.
+    closed_loop:
+      enabled: false
+      pregrasp_rescan: true
+      max_position_correction_mm: 20.0
+      max_orientation_correction_deg: 15.0
+      max_grip_width_correction_mm: 20.0
+      target_match_iou_threshold: 0.3
+
+    # Post-grasp verification.
+    verification:
+      enabled: false
+      require_object_detected: false
+      width_delta_min_mm: 2.0
+      width_delta_max_mm: null
+      post_lift_vision_check: false
+      vision_displacement_iou_max: 0.2
+      fail_closed: true
+
+    # Dense-clutter scene recovery. ``allowed_actions`` must be
+    # a subset of the active mode profile's recovery allow-list; unknown
+    # names are rejected at runtime.
+    dense_recovery:
+      enabled: false
+      allowed_actions: ["next_viewpoint"]
+      max_recovery_actions: 2
+      nudge_max_offset_mm: 15.0
+      container_agitate_amplitude_mm: 10.0
+
+    # Learned success-probability blend. ``lifecycle_phase`` gates whether the promoted
+    # predictor may REORDER candidates: "shadow" (default) runs it but discards the output (byte-identical
+    # to no-blend); "canary"/"active" let the bounded blend reorder dense-mode candidates and REQUIRE a
+    # passing promotion.json (else the model load fails closed to no-blend). Was previously hardcoded to
+    # "shadow" in the builder, so the promoted model could never influence which grasp executes.
+    success_model:
+      enabled: false
+      artifact_dir: "assets/models/success_probability/v1"
+      lifecycle_phase: "shadow"      # shadow | canary | active
+      ranking_blend_enabled: false
+      ranking_blend_weight: 0.20
+      ranking_blend_modes: ["dense_clutter", "dense_autonomous"]
+
+    # Pre-execution decision layer. When ``enabled: true`` the
+    # AutonomousGraspService runs a bounded re-observation loop *before*
+    # the regular pick path: candidates with uncertainty above
+    # ``auto_uncertainty_threshold`` trigger a viewpoint move (up to
+    # ``max_reobservations`` times). Real-hardware deployments
+    # fail-closed when the budget is exhausted unless
+    # ``fail_closed_on_real_hardware`` is set to ``false``. Simulated
+    # arms stay permissive regardless. ``enabled: false`` (the default)
+    # preserves prior behaviour byte-for-byte.
+    decision:
+      enabled: false
+      auto_uncertainty_threshold: 0.4
+      max_reobservations: 2
+      reasons_penalty: 0.2
+      fail_closed_on_real_hardware: true
+
+    # Feasibility-aware ranking. When ``enabled: true`` the
+    # AutonomousGraspService asks the calculator to factor pre-commit
+    # execution-feasibility signals (IK quality, joint-limit margin,
+    # swept-approach clearance) into the candidate ranking. Each
+    # signal is gated by its own ``*_enabled`` flag; disabled signals
+    # contribute a neutral 0.5 floor so they never demote a peer.
+    # The top-level ``weight`` controls feasibility's share of the
+    # normalised GraspScoreWeights average. With ``enabled: false``
+    # (the default) and ``weight: 0.0``, the prior ranking is preserved
+    # byte-for-byte. ``apply_modes`` permanently excludes EASY to
+    # protect its locked +5% cycle-time budget.
+    feasibility:
+      enabled: false
+      weight: 0.0
+      apply_modes: ["auto", "dense_clutter", "dense_autonomous"]
+      ik_quality_enabled: false
+      ik_quality_weight: 0.4
+      joint_margin_enabled: false
+      joint_margin_weight: 0.3
+      swept_approach_enabled: false
+      swept_approach_weight: 0.3
+      swept_approach_top_k: 5
+
+    # Occlusion / hidden-geometry analysis. When
+    # ``directional_enabled: true`` the AutonomousGraspService runs
+    # the corridor analyzer over the approach (and optional retreat)
+    # axis to estimate per-direction clearance and a fused
+    # depth+mask blockage confidence. The result feeds the
+    # feasibility scorer as a fourth signal (``corridor_risk``);
+    # when ``hard_reject_enabled: true`` candidates whose confidence
+    # exceeds ``hard_reject_confidence_threshold`` are dropped
+    # outright instead of merely demoted. Defaults are off and
+    # preserve prior behaviour byte-identically. ``apply_modes`` permanently
+    # excludes EASY for the same cycle-time reason.
+    occlusion:
+      directional_enabled: false
+      hard_reject_enabled: false
+      apply_modes: ["auto", "dense_clutter", "dense_autonomous"]
+      corridor_radius_mm: 20.0
+      corridor_step_mm: 5.0
+      corridor_max_distance_mm: 200.0
+      mask_fusion_weight: 0.5
+      partial_confidence_threshold: 0.3
+      hard_reject_confidence_threshold: 0.7
+      top_k: 5
+
+    # Clutter-aware target ordering. When
+    # ``enabled: true`` the orchestrator computes an *unlock score*
+    # per successful per-segmentation grasp via the configured
+    # ``blocker_graph`` signals and a *priority* score
+    # ``local_score + unlock_weight * unlock_score``. The legacy
+    # ``argmax(local_score)`` winner is only displaced when the
+    # priority winner is within ``max_local_score_drop`` of it; the
+    # operator decides how much per-pick score they are willing to
+    # give up to unblock downstream picks. Every flag defaults off so
+    # snapshots remain byte-identical. EASY is permanently excluded
+    # from ``apply_modes`` for the same cycle-time reason.
+    ordering:
+      enabled: false
+      unlock_weight: 0.0
+      max_local_score_drop: 0.1
+      apply_modes: ["auto", "dense_clutter", "dense_autonomous"]
+      blocker_graph:
+        mask_adjacency_enabled: false
+        depth_only_enabled: false
+        corridor_overlap_enabled: false
+        adjacency_radius_px: 5
+        depth_tolerance_mm: 10.0
+
+    # Recovery-orchestrator block. All flags default OFF so the YAML
+    # is byte-identical until the operator opts in. EASY is permanently
+    # excluded from ``apply_modes``. When ``allowed_actions`` contains a
+    # physical action (``nudge_target`` / ``container_agitate``) a
+    # ``fixture`` envelope is required.
+    recovery:
+      enabled: false
+      max_recovery_actions: 2
+      allowed_actions: []
+      per_action_budget: []
+      apply_modes: ["auto", "dense_clutter", "dense_autonomous"]
+      fixture: null
+
+    # Uncertainty-fusion block. All flags default OFF so the YAML is
+    # byte-identical until the operator opts in. EASY is permanently
+    # excluded from ``apply_modes``. When ``enabled`` is true the new
+    # ``fail_closed_threshold`` replaces the legacy
+    # ``decision.auto_uncertainty_threshold``; when false the legacy
+    # value remains in effect.
+    uncertainty:
+      enabled: false
+      fail_closed_threshold: 0.4
+      apply_modes: ["auto", "dense_clutter", "dense_autonomous"]
+      weights:
+        depth_confidence: 1.0
+        mask_confidence: 1.0
+        occlusion_corridor_risk: 1.0
+        feasibility_margin: 1.0
+        verification_residual: 1.0
+        topology_risk: 0.0
+        semantic_confidence: 0.0
+      ranking_penalty_weight: 0.0
+      recovery_aggressive_threshold: 1.01
+      calibration_artifact_path: null
+      # Per-candidate uncertainty re-rank (consumer of the corridor-risk producer). DEFAULT OFF +
+      # weight 0.0 -> byte-identical (enabling is observe-only until a positive weight is set). When
+      # enabled, the calculator owner must also build it with corridor_risk_per_candidate=True (the
+      # producer) or the re-rank no-ops; enabling costs N corridor depth-marches per dense pick.
+      rerank_enabled: false
+      rerank_weight: 0.0
+      rerank_modes: ["dense_clutter", "dense_autonomous"]
+
+    # Multi-view fusion + the mandatory commit gate. DEFAULT OFF (byte-identical). To make the commit
+    # gate REACHABLE in production: set enabled: true, commit_policy.enabled:
+    # true, AND point extrinsics_artifact_path at a calibrated eye-to-hand Extrinsics JSON (written by
+    # save_extrinsics). The orchestrator then refuses to commit a winning grasp until >=min_views_accepted
+    # fused views + corridor evidence exist, re-observing up to commit_policy.max_reobserve_attempts before
+    # surfacing NO_COMMIT_INSUFFICIENT_FUSION. FAIL-CLOSED: a set-but-unloadable artifact raises at startup.
+    # Eye-in-hand cells leave extrinsics_artifact_path null and pass a frame_resolver in code.
+    fusion:
+      enabled: false
+      extrinsics_artifact_path: null
+      commit_policy:
+        enabled: false
+
+    # Dense-mode swept-volume approach/retreat validator. DEFAULT OFF (byte-identical). When
+    # enabled, the orchestrator validates each ranked candidate's approach/retreat SWEEP against the scene
+    # neighbour cloud (the calculator only checks the final pose) and executes the first sweep-clear
+    # candidate, refusing (APPROACH_PATH_BLOCKED) if all are blocked. Dense-only via apply_modes (EASY
+    # locked out -> M1/EIH/single-object untouched). Independent of fusion.
+    approach_validation:
+      enabled: false
+      apply_modes: ["dense_clutter", "dense_autonomous"]
+
+  # ----------------------------------------------------------------------
+  # RL optimisation extension layer. Defaults preserve byte-identical
+  # production behaviour: ``mode: hybrid_ml`` keeps the deterministic
+  # stack with promoted ML scorers active, no RL artifact is loaded, and
+  # the RL telemetry-completeness gate stays dormant (it only fires for
+  # ``rl_shadow``/``rl_active``/``rl_experimental``).
+  #
+  # The schema rejects any RL-active mode without ``policy_id`` AND
+  # ``artifact_path``, and the runtime also rejects every RL-active mode
+  # with a typed ``RLModeNotImplementedError``. See
+  # ``backend/src/robot/grasping/rl/__init__.py``.
+  #
+  # Authority hierarchy (hard lock): robot.safety > runtime/hardware
+  # > deterministic geometry > deterministic recovery > ML/RL.
+  # ----------------------------------------------------------------------
+  rl:
+    mode: "hybrid_ml"
+    policy_id: null
+    artifact_path: null
+    rollback_triggers:
+      # Carrier defaults; the final numerics are re-locked before any RL
+      # artifact is promoted to ``rl_active``.
+      decision_latency_breach_consecutive_windows: 3
+      override_regret_breach_consecutive_windows: 2
+      override_regret_rate_cap: 0.10
+      untyped_outcome_cap: 0
+      dead_loop_rate_tolerance_abs: 0.005
+    experimental:
+      enabled: false
+
+  # ----------------------------------------------------------------------
+  # KUKA-only block. Only consulted when robot.vendor == "kuka".
+  # See backend/config/data/robot/templates/kuka/README.md for the
+  # controller-side KRL + EKI XML templates.
+  # ----------------------------------------------------------------------
+  kuka:
+    model: "kr6-r900"
+    controller: "krc4"
+    dof: 6
+    transport: "eki"
+    controller_ip: "192.168.1.20"   # KUKA controller network address
+    eki:
+      role: "server"          # Willy listens; KRL dials in
+      host: "0.0.0.0"
+      port: 7000
+      timeout_s: 5.0
+      heartbeat_s: 0.5
+      buffer_size: 65536
