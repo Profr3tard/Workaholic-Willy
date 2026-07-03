@@ -1,0 +1,6 @@
+# SHA-locked artifacts: the model promotion gate (verify_promotion) and the golden/baseline checks hash
+# the EXACT file bytes, so these must stay byte-identical across platforms. Disable EOL conversion
+# (-text); otherwise a Windows CRLF checkout changes the bytes and the SHA gate fails — the artifact
+# reads as "tampered or stale" and a promoted model can never load (canary/active fail closed to no-blend).
+assets/models/** -text
+docs/baselines/** -text
