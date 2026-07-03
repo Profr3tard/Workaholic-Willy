@@ -1,0 +1,7 @@
+# Everything installed here is machine-local and NEVER committed (Coal, cuRobo + its
+# source, SuctionNet — multi-GB, license-bound, machine-specific). Only this file and
+# the README are tracked, so the folder + the install convention live in the repo while
+# the payload stays out of git.
+*
+!.gitignore
+!README.md
