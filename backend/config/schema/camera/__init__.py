@@ -2,7 +2,7 @@ from .cam_schema import (
     CameraSystemConfig,
     EyeHandRoutineConfig,
     EyeInHandWorkflowConfig,
-    EyeToHandConfig, # EyeToHandConfig newer
+    EyeToHandConfig,
     EyeToHandWorkflowConfig,
     HandEyeConfig,
     RGBDDeviceRigConfig,
@@ -28,7 +28,6 @@ __all__ = [
     "EyeHandRoutineConfig",
     "EyeInHandWorkflowConfig",
     "EyeToHandConfig",
-    "EyeToHandSettings",
     "EyeToHandWorkflowConfig",
     "HandEyeConfig",
     "QualityConfig",
