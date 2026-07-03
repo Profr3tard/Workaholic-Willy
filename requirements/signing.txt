@@ -1,0 +1,10 @@
+# OPTIONAL — enables the Ed25519 promotion-signing seam (R10).
+#
+# The U3 promotion gate's trust root is the SHA-256 attestation chain and needs
+# NO crypto. This package is only required if a deployment wants to layer a real
+# signature on top (inject a Signer/Verifier — see
+# backend/src/robot/grasping/calibration/signing.py). The repo ships no committed
+# key, so without this the signature stays "none" and nothing is faked. Installed
+# by requirements/dev.txt so CI exercises the seam; kept out of the default
+# runtime install.
+cryptography==45.0.7

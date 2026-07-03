@@ -1,0 +1,12 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Workaholic-Willy is a library + CLI stack (no web server / UI / ROS node in-repo).
+#
+# This file is a convenience entry point that installs the CPU runtime.
+#   CPU / CI / macOS : pip install -r requirements.txt        (== requirements/cpu.txt)
+#   GPU workstation  : pip install -r requirements/cuda.txt
+#   Dev + CI tooling : pip install -r requirements/dev.txt
+#
+# Optional layers (NOT installed by default):
+#   requirements/robot-ur.txt   Universal Robots SDK stack
+# ──────────────────────────────────────────────────────────────────────────
+-r requirements/cpu.txt

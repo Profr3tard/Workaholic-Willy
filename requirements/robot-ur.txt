@@ -1,0 +1,13 @@
+# OPTIONAL — Universal Robots driver stack. Platform-sensitive C++ builds;
+# install manually on a UR deployment machine. Deliberately excluded from CI so
+# macOS / Linux runners without UR tooling stay green.
+#
+# ur_rtde provides rtde_control / rtde_receive AND the bundled robotiq_gripper
+# module used by:
+#   backend/src/robot/drivers/ur/connection.py
+#   backend/src/robot/grippers/robotiq.py
+ur_rtde==1.6.3
+#
+# Optional analytic UR inverse kinematics (URAnalyticIKService in
+# backend/src/robot/execution/ik_service.py). Build is platform-sensitive:
+#   pip install ur_ikfast

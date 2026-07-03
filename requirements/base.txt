@@ -1,0 +1,23 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Workaholic-Willy — BASE dependencies (cross-platform, framework-agnostic).
+#
+# Never installed alone: a PyTorch flavor is layered on top via
+#   requirements/cpu.txt    CI + macOS dev laptop (no GPU)
+#   requirements/cuda.txt   RTX 5080 workstation (CUDA 12.8+)
+# Dev/CI tooling: requirements/dev.txt
+# Optional layers (not installed by default):
+#   requirements/robot-ur.txt   Universal Robots SDK stack
+# ──────────────────────────────────────────────────────────────────────────
+pydantic==2.13.4
+PyYAML==6.0.3
+numpy==2.4.4
+scipy==1.17.1
+pillow==12.2.0
+opencv-contrib-python==4.13.0.92
+open3d>=0.18.0
+# sounddevice needs system PortAudio at runtime. On Linux (CI / the GPU
+# workstation) install it: `apt-get install -y libportaudio2`. Without it, the
+# top-level `import sounddevice` in models/speech/speech_to_text.py raises OSError.
+sounddevice==0.5.5
+matplotlib==3.10.8
+transformers==5.5.4

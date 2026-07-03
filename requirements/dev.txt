@@ -1,0 +1,12 @@
+# Dev + CI tooling. Pulls the CPU runtime + the offline-training stack so a single
+#   pip install -r requirements/dev.txt
+# gives a fully working local environment that matches CI (which runs the U1/U3/V*
+# training + determinism tests that require scikit-learn).
+-r cpu.txt
+-r train.txt
+-r signing.txt
+ruff==0.15.15
+mypy==2.1.0
+pytest==9.0.3
+pytest-cov==7.1.0
+pip-audit
