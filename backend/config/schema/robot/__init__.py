@@ -1,4 +1,4 @@
-from .robot_schema import (
+from .robot import (
     BlockerGraphSchemaConfig,
     DummyConfig,
     DwellSafetyConfig,
