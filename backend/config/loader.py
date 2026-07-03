@@ -21,7 +21,7 @@ The loader expects (paths are relative to ``data_dir``)::
     camera/eye_to_hand.yaml
     camera/hand_eye.yaml       (optional — schema defaults are used otherwise)
     models/*.yaml             (auto-discovered; every top-level key is merged)
-    robot/robot.yaml          (optional — For Real Usage, please adapt that to you robot)
+    robot/robot.yaml          (optional)
 
 Environment-variable substitution
 ---------------------------------
@@ -57,16 +57,36 @@ from pydantic import ValidationError
 from ._merge import _deep_merge
 from .schema.app import AppConfig
 
-# Constant imports for readability
-from ._utils.constants import (
-    ConfigError,
-    _DEFAULT_DATA_DIR,
-    _PROFILE_ENV_VAR,
-    _ADAPTATION_OVERLAY_ENV_VAR,
-    _CAMERA_FILES,
-    _CAMERA_KEYS,
-    _ENV_VAR_RE,
-)
+# ---------------------------------------------------------------------------
+# Public types
+# ---------------------------------------------------------------------------
+
+class ConfigError(RuntimeError):
+    """Raised on any configuration load / validation failure."""
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "data"
+_PROFILE_ENV_VAR = "WILLY_PROFILE"
+#: Phase U11 — opt-in environment variable. When set to a readable
+#: YAML path, the loader deep-merges that overlay into the ``robot``
+#: section of the raw config **before** Pydantic validation. The
+#: overlay is rejected unless every leaf key path is in the
+#: ``runtime_mutable=True`` allow-list discovered from ``RobotConfig``.
+#: Default-off (env unset) ⇒ byte-identical legacy path.
+_ADAPTATION_OVERLAY_ENV_VAR = "WILLY_ADAPTATION_OVERLAY"
+
+# Required camera files. These are not auto-discovered because the
+# loader maps each one to a specific section in the AppConfig tree.
+_CAMERA_FILES = ("cam.yaml", "stereomatcher.yaml", "eye_to_hand.yaml")
+_CAMERA_KEYS = ("cameras", "stereomatcher", "eye_to_hand")
+
+# ${VAR} or ${VAR:-default}. Single-line, no nesting.
+_ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?:\:-([^}]*))?\}")
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -110,12 +130,13 @@ def active_profile() -> str | None:
 
 
 def set_active_profile(profile: str | None) -> None:
-    """Set/clear :data:`WORKAHOLIC-WILLY_PROFILE` for subsequent config loads."""
+    """Set/clear :data:`WILLY_PROFILE` for subsequent config loads."""
     val = (profile or "").strip()
     if val:
         os.environ[_PROFILE_ENV_VAR] = val
     else:
         os.environ.pop(_PROFILE_ENV_VAR, None)
+
 
 def available_profiles(data_dir: str | Path | None = None) -> list[str]:
     """Return sorted profile names discovered from ``*.{profile}.yaml`` files."""
@@ -148,7 +169,7 @@ def _load_cached(root_str: str, profile: str) -> AppConfig:
     if robot is not None:
         raw["robot"] = robot
 
-    # transparent guarded-adaptation overlay merge.
+    # Transparent guarded-adaptation overlay merge.
     # Default-off. Env-var-gated. Path allow-list enforced.
     overlay_path_str = os.environ.get(_ADAPTATION_OVERLAY_ENV_VAR, "").strip()
     if overlay_path_str:
@@ -164,7 +185,7 @@ def _load_cached(root_str: str, profile: str) -> AppConfig:
         raise ConfigError(
             f"configuration failed schema validation under {root}:\n{exc}"
         ) from exc
-    
+
 
 # ---------------------------------------------------------------------------
 # Internal: section loaders
@@ -359,7 +380,7 @@ def _substitute_env_vars(text: str, path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Phase U11 — adaptation overlay merge
+# Adaptation overlay merge
 # ---------------------------------------------------------------------------
 
 def _apply_adaptation_overlay(raw: dict[str, Any], overlay_path: Path) -> None:

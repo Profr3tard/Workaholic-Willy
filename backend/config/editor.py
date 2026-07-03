@@ -1,11 +1,7 @@
 """Helpers for reading, validating, and writing config profile overlays.
 
 The loader is authoritative for parsing + validation. This module adds a
-thin editing layer intended for a future/hypothetical settings UI (D8: there is
-NO frontend or web server in this repo today — these helpers are a pure-Python
-config-editing API, used by the test suite + callable from a CLI):
-    - Later this editor should be able to get all the profiles, from the GUI,
-    either from Webservice (Education) or dedicated App (Comercial)
+thin editing layer intended for a future/hypothetical settings UI:
 
 * enumerate editable base YAML files
 * read a profile's overlay bundle as text
@@ -141,7 +137,7 @@ def validate_overlay_bundle(
 ) -> dict[str, Any]:
     validate_profile_name(profile)
     root = data_root(data_dir)
-    with tempfile.TemporaryDirectory(prefix="aurora-config-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="willy-config-") as tmp:
         tmp_root = Path(tmp) / "data"
         shutil.copytree(root, tmp_root)
         _write_bundle_to_tree(tmp_root, profile, documents)
@@ -209,8 +205,7 @@ def apply_basic_settings(
     if robot_vendor:
         robot_root["vendor"] = robot_vendor
     if robot_ip:
-        # Vendor-block schema (Phase Q-C): the flat ``connection:`` key
-        # is gone. Route the IP into the matching vendor block. If no
+        # Route the IP into the matching vendor block. If no
         # vendor is set in the patch, default to UR so existing
         # operator workflows that only edit the IP keep working.
         target_vendor = robot_vendor or "ur"
@@ -345,4 +340,4 @@ __all__ = [
     "save_overlay_bundle",
     "switch_profile",
     "validate_overlay_bundle",
-] 
+]
