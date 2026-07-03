@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────
+  # PRIMARY CI — lint · type · test · coverage · soak gate. Runs CPU-only: the
+  # test suite is torch-free by design, but the full CPU runtime is installed so
+  # the torch / torchvision pin is install-validated on every run.
+  # ────────────────────────────────────────────────────────────────────────
+  backend-cpu:
+    name: Backend (CPU) — lint · type · test · soak
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install (CPU runtime + dev tooling)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Ruff (lint)
+        run: ruff check backend tests
+
+      - name: Mypy (type check)
+        run: mypy backend
+
+      - name: Pytest + coverage (fail-under 80%)
+        run: |
+          pytest tests \
+            --cov=backend \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=80
+
+      - name: U12 production soak gate
+        # Deterministic synthetic soak + 12-key KPI gate; exit 0 iff all pass.
+        # Locks the U12 baseline against silent behavioral regressions.
+        run: python -m backend.src.robot.grasping.replay --soak-report
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cpu
+          path: coverage.xml
+
+      - name: Security audit (pip-audit, informational)
+        # Non-blocking: surfaces advisories in pinned third-party deps (e.g.
+        # torch/opencv) that we cannot patch upstream, without red-gating dev.
+        continue-on-error: true
+        run: pip-audit --desc
+
+  # ────────────────────────────────────────────────────────────────────────
+  # CUDA dependency smoke test. Validates that the RTX-5080 cu128 wheels
+  # resolve and torch imports. The cu128 wheels are large (~2.5 GB), so this
+  # runs only on pushes to main and manual dispatch — not on every PR.
+  # ────────────────────────────────────────────────────────────────────────
+  backend-cuda-smoke:
+    name: Backend (CUDA deps smoke)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install CUDA runtime (no GPU on runner)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/cuda.txt
+
+      - name: Torch import smoke test
+        run: python -c "import torch, torchvision; print('torch', torch.__version__, '| cuda available:', torch.cuda.is_available())"
