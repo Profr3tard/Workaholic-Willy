@@ -1,0 +1,13 @@
+simplifier:
+  model_path: "backend/src/models/simplifying/model"
+  model_id: 
+  max_length: 100
+  num_beams: 5
+  no_repeat_ngram_size: 2
+  early_stopping: True
+  optim:
+    torch_dtype: auto
+    attn_implementation: sdpa
+    channels_last: false       # text model, no benefit
+    compile: false
+    compile_mode: reduce-overhead
