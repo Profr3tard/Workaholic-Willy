@@ -79,7 +79,7 @@ def _invert_homogeneous(matrix: np.ndarray) -> np.ndarray:
 
 
 def _rot_to_vec(R: np.ndarray) -> np.ndarray:
-    """Matrix logarithm of a rotation matrix → axis-angle vector (3,)."""
+    """Matrix logarithm of a rotation matrix -> axis-angle vector (3,)."""
     cos_angle = np.clip((np.trace(R) - 1.0) / 2.0, -1.0, 1.0)
     angle = float(np.arccos(cos_angle))
     if abs(angle) < 1e-10:
@@ -92,7 +92,7 @@ def _rot_to_vec(R: np.ndarray) -> np.ndarray:
 
 
 def _vec_to_rot(v: np.ndarray) -> np.ndarray:
-    """Rodrigues axis-angle vector → 3×3 rotation matrix."""
+    """Rodrigues axis-angle vector -> 3x3 rotation matrix."""
     theta = float(np.linalg.norm(v))
     if theta < 1e-10:
         return np.eye(3, dtype=np.float64)
@@ -108,8 +108,8 @@ def _project_to_SO3(M: np.ndarray) -> np.ndarray:
     """Project an approximate rotation matrix onto SO(3) via SVD.
 
     The SVD null-space vector has a sign ambiguity (±vec(R_X)); when the
-    null vector is the negative of the correct answer, ``M ≈ −R_X_true``
-    has ``det ≈ −1``.  Negating ``M`` before projection recovers ``R_X_true``.
+    null vector is the negative of the correct answer, ``M ≈ -R_X_true``
+    has ``det ≈ -1``.  Negating ``M`` before projection recovers ``R_X_true``.
     """
     if np.linalg.det(M) < 0:
         M = -M
@@ -124,7 +124,7 @@ def _project_to_SO3(M: np.ndarray) -> np.ndarray:
 class HandEyeAXXB:
     """Closed-form AX = XB hand-eye calibration solver.
 
-    Solves for the unknown rigid transform **X** (4 × 4) given *N* pairs of
+    Solves for the unknown rigid transform **X** (4 x 4) given *N* pairs of
     relative transforms (**A_i**, **B_i**) that satisfy:
 
         A_i  X  ≈  X  B_i      for i = 1 … N
@@ -164,7 +164,7 @@ class HandEyeAXXB:
             (4, 4) best-fit homogeneous transform.
         rmse:
             Frobenius-norm residual RMSE averaged over all pairs:
-            ``mean‖A_i X − X B_i‖_F``.
+            ``mean‖A_i X - X B_i‖_F``.
 
         Raises
         ------
