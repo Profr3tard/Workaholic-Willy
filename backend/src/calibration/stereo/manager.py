@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+import logging
+from typing import Optional, Sequence, TYPE_CHECKING
+
+import numpy as np
+
+from .config import StereoRigConfig
+from .factory import StereoRigFactory
+
+from .sub_modules.aruco_esti import ArucoPoseEstimator
+
+from backend.src.calibration.exceptions import StereoCalibrationError
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from backend.config.schema.camera import CalibrationConfig, StereoMatcherConfig
+
+__all__ = ["StereoCam3D"]
+
+class StereoCam3D:
+    def __init__(
+        self,
+        rigs: Sequence[StereoRigConfig],
+        calibration: CalibrationConfig,
+        stereo_matcher: StereoMatcherConfig,
+        marker_length_mm: float | None = None,
+        aruco_dict_name: str | None = None,
+    ):
+        self.logger = logging.getLogger("backend.src.calibration.stereo.StereoCam3D")
+        self.frame_size = tuple(calibration.frame_size)
+        self.marker_length_mm = (
+            float(marker_length_mm)
+            if marker_length_mm is not None
+            else float(calibration.marker_length_mm)
+        )
+        dict_name = aruco_dict_name or calibration.aruco_dict_name
+
+        factory = StereoRigFactory(
+            chessboard_size=calibration.chessboard_size,
+            square_size_mm=calibration.square_size_mm,
+            rectify_alpha=calibration.rectify_alpha,
+            stereo_matcher_cfg=stereo_matcher,
+            logger=self.logger,
+        )
+
+        self.rigs = [factory.create(cfg, self.frame_size) for cfg in rigs]
+        if not self.rigs:
+            raise StereoCalibrationError("at least one stereo rig configuration is required")
+
+        self.aruco_esti = ArucoPoseEstimator(
+            marker_length_mm=self.marker_length_mm,
+            dict_name=dict_name,
+        )
+
+    def _rig(self, rig: int):
+        if not isinstance(rig, int) or isinstance(rig, bool):
+            raise IndexError(f"rig index must be an integer, got {type(rig).__name__}")
+        if rig < 0 or rig >= len(self.rigs):
+            raise IndexError(f"Invalid rig index {rig}. Available: 0..{len(self.rigs)-1}")
+        return self.rigs[rig]
+
+    def rectify(self, left_bgr, right_bgr, rig=0):
+        return self._rig(rig).rectify(left_bgr, right_bgr)
+
+    def compute_disparity(self, rect_left_bgr, rect_right_bgr, rig=0):
+        return self._rig(rig).compute_disparity(rect_left_bgr, rect_right_bgr)
+
+    def reproject_to_3d(self, disparity_px: np.ndarray, rig=0):
+        return self._rig(rig).reproject_to_3d(disparity_px)
+
+    def compute_depth_map(self, rect_left_bgr, rect_right_bgr, unit: str = "mm", rig=0):
+        return self._rig(rig).compute_depth_map(rect_left_bgr, rect_right_bgr, unit)
+
+    def compute_3D_point(self, rect_left_bgr, rect_right_bgr, mask=None, reducer: str = "median", unit: str = "mm", rig=0):
+        return self._rig(rig).compute_3d_point(rect_left_bgr, rect_right_bgr, mask, reducer, unit)
+
+    def compute_3D_point_xy(self, rect_left_bgr, rect_right_bgr, x, y, unit="mm", rig=0):
+        return self._rig(rig).compute_3d_point_xy(rect_left_bgr, rect_right_bgr, x, y, unit)
+
+    def set_extrinsics(self, T_cam_to_base_4x4, rig=0):
+        runtime = self._rig(rig)
+        runtime.set_extrinsics(T_cam_to_base_4x4)
+
+    def transform_cam_to_base(self, point_cam, rig=0):
+        return self._rig(rig).transform_cam_to_base(point_cam)
+
+    def estimate_marker_pose_left(self, rect_left_bgr, target_id: Optional[int] = None, rig=0):
+        runtime = self._rig(rig)
+        K_rect = runtime.calib_result.K_rect
+        dist_rect = np.zeros(5)  # rectified images have zero distortion
+        return self.aruco_esti.estimate(rect_left_bgr, K_rect, dist_rect, target_id)
