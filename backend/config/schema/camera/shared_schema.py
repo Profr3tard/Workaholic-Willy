@@ -85,23 +85,29 @@ class QualityConfig(StrictModel):
 
 
 class CalibrationConfig(StrictModel):
-    """Stereo-calibration pattern parameters (chessboard + ArUco)."""
+    """Stereo-calibration ChArUco board parameters + the shared ArUco marker settings.
 
-    chessboard_size: tuple[int, int]
-    square_size_mm: float = Field(gt=0.0)
+    The calibration board and the standalone hand-eye marker share
+    ``aruco_dict_name`` so the whole pipeline uses one ArUco dictionary.
+    """
+
+    charuco_squares_x: int = Field(gt=1)
+    charuco_squares_y: int = Field(gt=1)
+    charuco_square_length_mm: float = Field(gt=0.0)
+    charuco_marker_length_mm: float = Field(gt=0.0)
     frame_size: tuple[int, int]
     rectify_alpha: float = Field(ge=0.0, le=1.0)
     marker_length_mm: float = Field(gt=0.0)
     aruco_dict_name: ArucoDictName
 
     @model_validator(mode="after")
-    def _check_positive_pairs(self) -> CalibrationConfig:
-        for name, pair in (
-            ("chessboard_size", self.chessboard_size),
-            ("frame_size", self.frame_size),
-        ):
-            if len(pair) != 2 or pair[0] <= 0 or pair[1] <= 0:
-                raise ValueError(f"{name} must contain two positive values")
+    def _check(self) -> CalibrationConfig:
+        if len(self.frame_size) != 2 or self.frame_size[0] <= 0 or self.frame_size[1] <= 0:
+            raise ValueError("frame_size must contain two positive values")
+        if self.charuco_marker_length_mm >= self.charuco_square_length_mm:
+            raise ValueError(
+                "charuco_marker_length_mm must be < charuco_square_length_mm (the marker fits inside a square)"
+            )
         return self
 
 
