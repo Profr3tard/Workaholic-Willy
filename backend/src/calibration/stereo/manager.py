@@ -36,8 +36,11 @@ class StereoCam3D:
         dict_name = aruco_dict_name or calibration.aruco_dict_name
 
         factory = StereoRigFactory(
-            chessboard_size=calibration.chessboard_size,
-            square_size_mm=calibration.square_size_mm,
+            squares_x=calibration.charuco_squares_x,
+            squares_y=calibration.charuco_squares_y,
+            square_length_mm=calibration.charuco_square_length_mm,
+            marker_length_mm=calibration.charuco_marker_length_mm,
+            aruco_dict_name=dict_name,
             rectify_alpha=calibration.rectify_alpha,
             stereo_matcher_cfg=stereo_matcher,
             logger=self.logger,

@@ -3,12 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, TYPE_CHECKING
 
-from .config import StereoRigConfig
+from .config import CalibrationResult, StereoRigConfig
 
 from .repository import StereoRigRepository
 from .runtime import StereoRigRunTime
 
-from .sub_modules.calibration import StereoCalibration, CalibrationResult
+from .sub_modules.calibrator import StereoCalibrator
 from .sub_modules.rectifier import StereoRectifier
 from .sub_modules.disparity import DisparityComputer
 from .sub_modules.pointcloud import PointCloudReconstructor
@@ -22,10 +22,22 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 __all__ = ["StereoRigFactory"]
 
 class StereoRigFactory:
-    def __init__(self, chessboard_size, square_size_mm, rectify_alpha, stereo_matcher_cfg: StereoMatcherConfig, logger):
+    def __init__(
+        self,
+        squares_x,
+        squares_y,
+        square_length_mm,
+        marker_length_mm,
+        aruco_dict_name,
+        rectify_alpha,
+        stereo_matcher_cfg: StereoMatcherConfig,
+        logger,
+    ):
         self.logger = logger
         self.stereo_matcher_cfg = stereo_matcher_cfg
-        self.calibration = StereoCalibration(chessboard_size, square_size_mm, rectify_alpha)
+        self.calibrator = StereoCalibrator(
+            squares_x, squares_y, square_length_mm, marker_length_mm, aruco_dict_name, rectify_alpha
+        )
         self.repository = StereoRigRepository()
 
     def create(self, config: StereoRigConfig, frame_size) -> StereoRigRunTime:
@@ -67,7 +79,7 @@ class StereoRigFactory:
             config.right_glob,
         )
 
-        calib_result = self.calibration.calibrate(
+        calib_result = self.calibrator.calibrate(
             frame_size,
             config.left_glob,
             config.right_glob

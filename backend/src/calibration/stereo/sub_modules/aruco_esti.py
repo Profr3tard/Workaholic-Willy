@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-from contextlib import suppress
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 import cv2 as cv
 import numpy as np
@@ -13,7 +12,17 @@ from backend.src.calibration.exceptions import StereoCalibrationError
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["ArucoPoseEstimator"]
+__all__ = ["ArucoPoseEstimator", "resolve_aruco_dictionary"]
+
+
+def resolve_aruco_dictionary(name: str):
+    """Resolve a dictionary name (``'DICT_5X5_100'`` or ``'5X5_100'``) to a cv2 ArUco dictionary."""
+    d = name.upper().strip()
+    if not d.startswith("DICT_"):
+        d = "DICT_" + d
+    if not hasattr(cv.aruco, d):
+        raise StereoCalibrationError(f"Unknown ArUco dictionary: {name}")
+    return cv.aruco.getPredefinedDictionary(getattr(cv.aruco, d))
 
 
 def _rvec_tvec_to_matrix(rvec: np.ndarray, tvec: np.ndarray) -> np.ndarray:
@@ -41,34 +50,14 @@ class ArucoPoseEstimator:
         self.marker_length = float(marker_length_mm)
         if self.marker_length <= 0.0:
             raise StereoCalibrationError("marker_length_mm must be > 0")
-        self.aruco_dict = self._get_dict(dict_name)
-        if hasattr(cv.aruco, "DetectorParameters"):
-            self.aruco_params = cv.aruco.DetectorParameters()
-        else:
-            self.aruco_params = cv.aruco.DetectorParameters_create()  # type: ignore[attr-defined]
+        self.aruco_dict = resolve_aruco_dictionary(dict_name)
+        self.aruco_params = cv.aruco.DetectorParameters()
         # Sub-pixel corner refinement markedly improves solvePnP pose accuracy on fiducials.
-        with suppress(AttributeError):
-            self.aruco_params.cornerRefinementMethod = cv.aruco.CORNER_REFINE_SUBPIX
-        self._detector: Any
-        if hasattr(cv.aruco, "ArucoDetector"):
-            self._detector = cv.aruco.ArucoDetector(
-                self.aruco_dict,
-                self.aruco_params,
-            )
-        else:
-            self._detector = None
+        self.aruco_params.cornerRefinementMethod = cv.aruco.CORNER_REFINE_SUBPIX
+        self._detector = cv.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
 
         # Reusable grayscale buffer for the realtime path.
         self._gray: Optional[np.ndarray] = None
-
-    @staticmethod
-    def _get_dict(name: str):
-        d = name.upper().strip()
-        if not d.startswith("DICT_"):
-            d = "DICT_" + d
-        if not hasattr(cv.aruco, d):
-            raise StereoCalibrationError(f"Unknown ArUco dictionary: {name}")
-        return cv.aruco.getPredefinedDictionary(getattr(cv.aruco, d))
 
     def estimate(
         self,
@@ -97,14 +86,7 @@ class ArucoPoseEstimator:
         dist = np.asarray(dist_rect, dtype=np.float64).reshape(-1)
 
         gray = self._to_gray(rect_left_bgr)
-        if self._detector is not None:
-            corners, ids, _ = self._detector.detectMarkers(gray)
-        else:
-            corners, ids, _ = cv.aruco.detectMarkers(
-                gray,
-                self.aruco_dict,
-                parameters=self.aruco_params,
-            )
+        corners, ids, _ = self._detector.detectMarkers(gray)
         if ids is None or len(ids) == 0:
             logger.debug("ArUco: no markers detected.")
             return {} if target_id is None else None

@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from .aruco_esti import ArucoPoseEstimator
-from .calibration import StereoCalibration
 from .calibrator import StereoCalibrator
 from .disparity import DisparityComputer
 from .extrinsics import ExtrinsicsTransformer
-from .map_store import StereoMapStore
+from .calib_store import StereoCalibrationStore
 from .pointcloud import PointCloudReconstructor
 from .rectifier import StereoRectifier
 
@@ -16,8 +15,7 @@ __all__ = [
 	"DisparityComputer",
 	"ExtrinsicsTransformer",
 	"PointCloudReconstructor",
-	"StereoCalibration",
 	"StereoCalibrator",
-	"StereoMapStore",
+	"StereoCalibrationStore",
 	"StereoRectifier",
 ]

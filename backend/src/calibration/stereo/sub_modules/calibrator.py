@@ -1,57 +1,61 @@
-"""Chessboard-based stereo calibration.
+"""ChArUco-based stereo calibration.
 
-``StereoCalibrator`` performs the heavy lifting required to turn a folder
-of stereo image pairs into a :class:`CalibrationResult` (rectification
-maps, projection matrices, the ``Q`` reprojection matrix, etc.). It is
-deliberately stateless except for the calibration parameters themselves —
-persistence is handled by :class:`StereoMapStore`.
+``StereoCalibrator`` turns a folder of stereo image pairs into a
+:class:`CalibrationResult` (per-camera intrinsics, rectification rotations,
+projection matrices and the ``Q`` reprojection matrix; the remap tables are
+derived from those). Detection uses a ChArUco board -- robust to partial views
+and giving uniquely-ID'd corners, so corners are matched across the stereo pair
+by id. Persistence is handled by :class:`StereoCalibrationStore`.
 """
 
 from __future__ import annotations
 
 import glob
-import math
-from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Tuple
 
 import cv2 as cv
 import numpy as np
 
 from backend.src.calibration.exceptions import StereoCalibrationError
-from backend.src.calibration.helpers import proj_to_K
 from backend.src.calibration.stereo.config import CalibrationResult
+from backend.src.calibration.stereo.sub_modules.aruco_esti import resolve_aruco_dictionary
 
-# OpenCV cornerSubPix iteration criteria.
-_SUBPIX_CRIT = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 # stereoCalibrate iteration criteria.
 _STEREO_CRIT = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 100, 1e-6)
-# cornerSubPix search window half-size.
-_SUBPIX_WIN = (11, 11)
+# Minimum ChArUco corners a stereo pair must share (across L and R) to be usable.
+_MIN_CORNERS = 6
 # Minimum number of usable image pairs required for a stable calibration.
 _MIN_PAIRS = 10
 
+__all__ = ["StereoCalibrator"]
+
 
 class StereoCalibrator:
-    """Compute stereo intrinsics, extrinsics and rectification maps."""
+    """Compute stereo intrinsics, extrinsics and rectification from a ChArUco board."""
 
     def __init__(
         self,
-        chessboard_size: Sequence[int],
-        square_size_mm: float,
+        squares_x: int,
+        squares_y: int,
+        square_length_mm: float,
+        marker_length_mm: float,
+        aruco_dict_name: str,
         rectify_alpha: float = 0.0,
     ) -> None:
-        self.chessboard_size: Tuple[int, int] = (
-            int(chessboard_size[0]),
-            int(chessboard_size[1]),
-        )
-        self.square_size_mm: float = float(square_size_mm)
-        self.rectify_alpha: float = float(rectify_alpha)
-        if self.chessboard_size[0] <= 0 or self.chessboard_size[1] <= 0:
-            raise StereoCalibrationError("chessboard_size values must be positive")
-        if self.square_size_mm <= 0.0:
-            raise StereoCalibrationError("square_size_mm must be > 0")
-        if not (0.0 <= self.rectify_alpha <= 1.0):
+        if int(squares_x) <= 1 or int(squares_y) <= 1:
+            raise StereoCalibrationError("squares_x and squares_y must be > 1")
+        if not 0.0 < float(marker_length_mm) < float(square_length_mm):
+            raise StereoCalibrationError("require 0 < marker_length_mm < square_length_mm")
+        self.rectify_alpha = float(rectify_alpha)
+        if not 0.0 <= self.rectify_alpha <= 1.0:
             raise StereoCalibrationError("rectify_alpha must be between 0 and 1")
+        self._board = cv.aruco.CharucoBoard(
+            (int(squares_x), int(squares_y)),
+            float(square_length_mm),
+            float(marker_length_mm),
+            resolve_aruco_dictionary(aruco_dict_name),
+        )
+        self._detector = cv.aruco.CharucoDetector(self._board)
 
     # ------------------------------------------------------------------
     # Public API
@@ -77,7 +81,6 @@ class StereoCalibrator:
                 f"{len(left_imgs)} vs {len(right_imgs)}."
             )
 
-        objp = self._object_points()
         objpoints: List[np.ndarray] = []
         imgpointsL: List[np.ndarray] = []
         imgpointsR: List[np.ndarray] = []
@@ -86,7 +89,7 @@ class StereoCalibrator:
             pair = self._detect_pair(left_path, right_path)
             if pair is None:
                 continue
-            (gL_shape, cornersL, cornersR) = pair
+            (gL_shape, objp, cornersL, cornersR) = pair
             if frame_size is None:
                 frame_size = (gL_shape[1], gL_shape[0])
             objpoints.append(objp)
@@ -106,18 +109,10 @@ class StereoCalibrator:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
-    def _object_points(self) -> np.ndarray:
-        """Generate the 3D coordinates of chessboard corners (z=0)."""
-        cols, rows = self.chessboard_size
-        objp = np.zeros((cols * rows, 3), np.float32)
-        objp[:, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2)
-        objp *= self.square_size_mm
-        return objp
-
     def _detect_pair(
         self, left_path: str, right_path: str
-    ) -> Optional[Tuple[Tuple[int, int], np.ndarray, np.ndarray]]:
-        """Detect chessboard corners in a single stereo pair."""
+    ) -> Optional[Tuple[Tuple[int, int], np.ndarray, np.ndarray, np.ndarray]]:
+        """Detect ChArUco corners in a stereo pair and match them across L/R by id."""
         L = cv.imread(left_path)
         R = cv.imread(right_path)
         if L is None or R is None:
@@ -125,16 +120,37 @@ class StereoCalibrator:
 
         gL = cv.cvtColor(L, cv.COLOR_BGR2GRAY)
         gR = cv.cvtColor(R, cv.COLOR_BGR2GRAY)
-        cols, rows = self.chessboard_size
-
-        retL, cornersL = cv.findChessboardCorners(gL, (cols, rows))
-        retR, cornersR = cv.findChessboardCorners(gR, (cols, rows))
-        if not (retL and retR):
+        cornersL, idsL, _, _ = self._detector.detectBoard(gL)
+        cornersR, idsR, _, _ = self._detector.detectBoard(gR)
+        if idsL is None or idsR is None or len(idsL) < _MIN_CORNERS or len(idsR) < _MIN_CORNERS:
             return None
 
-        cornersL = cv.cornerSubPix(gL, cornersL, _SUBPIX_WIN, (-1, -1), _SUBPIX_CRIT)
-        cornersR = cv.cornerSubPix(gR, cornersR, _SUBPIX_WIN, (-1, -1), _SUBPIX_CRIT)
-        return gL.shape, cornersL, cornersR
+        matched = self._match_by_id(cornersL, idsL, cornersR, idsR)
+        if matched is None:
+            return None
+        objp, imgL, imgR = matched
+        return gL.shape, objp, imgL, imgR
+
+    def _match_by_id(
+        self,
+        cornersL: np.ndarray,
+        idsL: np.ndarray,
+        cornersR: np.ndarray,
+        idsR: np.ndarray,
+    ) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """Keep only ChArUco corners seen in BOTH images; return (object, left, right) points."""
+        board_corners = np.asarray(self._board.getChessboardCorners(), dtype=np.float32)
+        ids_left = [int(i) for i in idsL.flatten()]
+        ids_right = [int(i) for i in idsR.flatten()]
+        index_l = {cid: k for k, cid in enumerate(ids_left)}
+        index_r = {cid: k for k, cid in enumerate(ids_right)}
+        common = [cid for cid in ids_left if cid in index_r]
+        if len(common) < _MIN_CORNERS:
+            return None
+        obj = np.array([board_corners[cid] for cid in common], dtype=np.float32).reshape(-1, 1, 3)
+        img_l = np.array([cornersL[index_l[cid]] for cid in common], dtype=np.float32).reshape(-1, 1, 2)
+        img_r = np.array([cornersR[index_r[cid]] for cid in common], dtype=np.float32).reshape(-1, 1, 2)
+        return obj, img_l, img_r
 
     def _calibrate_from_correspondences(
         self,
@@ -143,8 +159,7 @@ class StereoCalibrator:
         imgpointsL: List[np.ndarray],
         imgpointsR: List[np.ndarray],
     ) -> CalibrationResult:
-        """Run mono → stereo → rectify → maps from already-detected corners."""
-        # Mono calibration for each camera independently.
+        """Run mono → stereo → rectify from already-matched corner correspondences."""
         _, camL, distL, _, _ = cv.calibrateCamera(  # type: ignore[call-overload]
             objpoints, imgpointsL, frame_size, None, None
         )
@@ -179,31 +194,15 @@ class StereoCalibrator:
             alpha=self.rectify_alpha,
         )
 
-        fx_rect = float(projR[0, 0])
-        fov_x_deg = float(math.degrees(2 * math.atan(frame_size[0] / (2 * fx_rect))))
-
-        stereoMapL_x, stereoMapL_y = cv.initUndistortRectifyMap(
-            camL_opt, distL, rectL, projL, frame_size, cv.CV_16SC2
-        )
-        stereoMapR_x, stereoMapR_y = cv.initUndistortRectifyMap(
-            camR_opt, distR, rectR, projR, frame_size, cv.CV_16SC2
-        )
-
         return CalibrationResult(
-            stereoMapL_x=stereoMapL_x,
-            stereoMapL_y=stereoMapL_y,
-            stereoMapR_x=stereoMapR_x,
-            stereoMapR_y=stereoMapR_y,
-            Q=Q,
+            camL=camL_opt,
+            distL=distL,
+            rectL=rectL,
             projL=projL,
+            camR=camR_opt,
+            distR=distR,
+            rectR=rectR,
             projR=projR,
-            K_rect=proj_to_K(projL),
-            fx_rect=fx_rect,
-            fov_x_deg=fov_x_deg,
+            Q=Q,
             frame_size=frame_size,
         )
-
-
-# Path is only imported so callers can pass pathlib objects to glob.glob —
-# OpenCV expects strings, but pathlib is more idiomatic upstream.
-__all__ = ["StereoCalibrator", "Path"]

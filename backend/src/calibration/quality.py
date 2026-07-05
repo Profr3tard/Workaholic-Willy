@@ -15,7 +15,6 @@ threads. ``__post_init__`` enforces strict monotonicity, which is the
 only guarantee callers rely on when classifying.
 """
 
-
 from __future__ import annotations
 
 import math
