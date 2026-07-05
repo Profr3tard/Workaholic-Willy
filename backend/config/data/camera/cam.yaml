@@ -140,6 +140,19 @@ cameras:
       depth_resolution: [1280, 720]
       align_depth_to_color: true
 
+      rgbd_backend: realsense
+      realsense:
+        enable_emitter: true
+        laser_power_mw: null
+        visual_preset: null
+        depth_units_m: null
+        export_intrinsics: false
+        post_processing:
+          decimation: false
+          spatial: true
+          temporal: true
+          hole_filling: false
+
       quality:
         prefer_uncompressed: false
         disable_auto_features: false

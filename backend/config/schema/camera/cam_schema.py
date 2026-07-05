@@ -118,6 +118,42 @@ class SingleDeviceRigConfig(BaseRigConfig):
 # RGB-D device  (e.g. Intel RealSense, Azure Kinect)
 # ---------------------------------------------------------------------------
 
+class RealSensePostProcessingConfig(StrictModel):
+    """Depth post-processing filter chain for the RealSense backend.
+
+    Applied to each depth frame in librealsense's recommended order
+    (decimation -> spatial -> temporal -> hole-filling). Every filter is a
+    no-op when disabled, so the defaults leave the raw device depth untouched
+    except for the mild spatial/temporal smoothing RealSense recommends.
+    """
+
+    decimation: bool = False
+    decimation_magnitude: int = Field(default=2, ge=2, le=8)
+    spatial: bool = True
+    temporal: bool = True
+    hole_filling: bool = False
+    hole_filling_mode: int = Field(default=1, ge=0, le=2)
+
+
+class RealSenseConfig(StrictModel):
+    """Intel RealSense (pyrealsense2) device tuning.
+
+    Consumed only when ``rgbd_backend == "realsense"`` and ignored by the
+    generic OpenCV backend. Every field has a working default so the driver
+    streams out-of-the-box on a connected device; ``None`` means "leave the
+    device/SDK default in place".
+    """
+
+    enable_emitter: bool = True
+    laser_power_mw: float | None = Field(default=None, ge=0.0)
+    visual_preset: str | None = None
+    depth_units_m: float | None = Field(default=None, gt=0.0)
+    export_intrinsics: bool = False
+    post_processing: RealSensePostProcessingConfig = Field(
+        default_factory=RealSensePostProcessingConfig
+    )
+
+
 class RGBDDeviceRigConfig(BaseRigConfig):
     """RGB-D camera with native depth (e.g. Intel RealSense, Azure Kinect)."""
 
@@ -129,6 +165,12 @@ class RGBDDeviceRigConfig(BaseRigConfig):
     color_resolution: tuple[int, int] = (1280, 720)
     depth_resolution: tuple[int, int] = (1280, 720)
     align_depth_to_color: bool = True
+
+    # Driver backend: "opencv" (generic VideoCapture/OpenNI, no vendor SDK) or
+    # "realsense" (pyrealsense2, native aligned depth). Default keeps the
+    # generic path; the RealSense knobs below apply only to the latter.
+    rgbd_backend: Literal["opencv", "realsense"] = "opencv"
+    realsense: RealSenseConfig = Field(default_factory=RealSenseConfig)
 
     calibration_paths: RGBDCalibPaths
 
@@ -229,7 +271,7 @@ class StereoMatcherConfig(StrictModel):
         description=(
             "Exponential moving average for disparity in realtime mode. "
             "0 = disabled (default), 1 = no smoothing (always latest), "
-            "0<α<1 weights the previous frame by (1-α)."
+            "0<a<1 weights the previous frame by (1-a)."
         ),
     )
     wls: WlsFilterConfig = Field(default_factory=WlsFilterConfig)  # type: ignore[arg-type]
