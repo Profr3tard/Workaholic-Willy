@@ -1,7 +1,7 @@
+# SAM2 for the sim real-vision (M2) path: downloaded from HF (local: false) on first run.
 segmenter:
-  # SAM2 for the sim real-vision (M2) path: downloaded from HF (local: false) on first run.
   # optim at conservative fp32 defaults to match the validated M2 baseline.
-  model_path: ""
+  model_path: "data/segmenting/sam"
   model_id: "facebook/sam2-hiera-large"
   local: false
   optim:
@@ -10,3 +10,24 @@ segmenter:
     channels_last: false
     compile: false
     compile_mode: reduce-overhead
+
+
+# OneFormer universal segmenter (instance masks). Active when segmenter_backend: "oneformer".
+oneformer:
+  model_path: "data/segmenting/research"
+  model_id: "shi-labs/oneformer_coco_swin_large"
+  local: false
+  task: "instance"
+  optim:
+    torch_dtype: auto
+    attn_implementation: "eager"
+    channels_last: true
+    compile: false
+    compile_mode: reduce-overhead
+
+
+#===============================================================================================================
+# Segmentation backend selection: "sam2" (realtime, box-prompted) | "oneformer" (research, higher-accuracy, GPU-heavy).
+segmenter_backend: "sam2"
+#
+#===============================================================================================================

@@ -2,13 +2,32 @@ objectdetector:
   # GroundingDINO for the sim real-vision (M2) path: downloaded from HF (local: false) on first run.
   # optim left at the conservative defaults (torch_dtype: null => fp32): the validated M2 8/10 baseline
   # ran fp32, and fp16 drops the confidence of the small (~46 px) overhead cube below threshold.
-  model_path: ""
+  model_path: "data/detector/zero_shot"
   model_id: "IDEA-Research/grounding-dino-tiny"
-  threshold: 0.2
+  threshold: 0.4
+  local: False
+  optim:
+    torch_dtype: auto          # fp16 on CUDA, fp32 elsewhere
+    attn_implementation: "eager"  # use "flash_attention_2" if installed
+    channels_last: true
+    compile: false             # opt-in; can speed up after warm-up
+    compile_mode: reduce-overhead
+
+# RT-DETR closed-set detector (COCO classes, runs WITHOUT a prompt). Active when detector: "rtdetr".
+rtdetr:
+  model_path: "data/detector/closed_set"
+  model_id: "PekingU/rtdetr_r50vd"
+  threshold: 0.4
   local: false
   optim:
-    torch_dtype: null
-    attn_implementation: null
-    channels_last: false
+    torch_dtype: auto
+    attn_implementation: "eager"
+    channels_last: true
     compile: false
     compile_mode: reduce-overhead
+
+# ==============================================================================================================
+# Detection backend selection: "groundingdino" (open-vocab, prompt) | "rtdetr" (closed-set, no prompt).
+detector: "groundingdino"
+#
+#===============================================================================================================

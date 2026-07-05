@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field
 
 from .._base import StrictModel
@@ -18,7 +20,7 @@ class InferenceOptimization(StrictModel):
     Fields:
         torch_dtype:
             ``"auto"`` (fp16 on CUDA, fp32 elsewhere), ``"float16"``,
-            ``"bfloat16"``, ``"float32"`` or ``None``.
+            ``"bfloat16"``, ``"float32"`` or ``None`` (= fp32, legacy).
         attn_implementation:
             Forwarded to ``from_pretrained``. ``"sdpa"`` is a safe fast
             default on CUDA. ``None`` keeps the HF default.
@@ -74,6 +76,16 @@ class SegmenterConfig(StrictModel):
     model_path: str
     model_id: str | None = None
     local: bool
+    optim: InferenceOptimization = Field(default_factory=InferenceOptimization)
+
+
+class OneFormerConfig(StrictModel):
+    """OneFormer universal-segmentation configuration (research/high-accuracy backend)."""
+
+    model_path: str
+    model_id: str | None = None
+    local: bool
+    task: Literal["instance", "semantic", "panoptic"] = "instance"
     optim: InferenceOptimization = Field(default_factory=InferenceOptimization)
 
 

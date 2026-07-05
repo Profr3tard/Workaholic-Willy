@@ -13,6 +13,8 @@ All schemas inherit from :class:`StrictModel` (immutable, ``extra="forbid"``).
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field, model_validator
 
 from ._base import StrictModel
@@ -26,6 +28,7 @@ from .models import (
     GestureDetectConfig,
     HandDetectConfig,
     ObjectDetectorConfig,
+    OneFormerConfig,
     SegmenterConfig,
     SimplifierConfig,
     SpeechToTextConfig,
@@ -72,6 +75,12 @@ class ModelsConfig(StrictModel):
     segmenter: SegmenterConfig
     simplifier: SimplifierConfig
     stt: SpeechToTextConfig
+    # Perception-backend selection. Defaults preserve the current behaviour
+    # (GroundingDINO + SAM2); switch via config, resolved by models.factory.
+    detector: Literal["groundingdino", "rtdetr"] = "groundingdino"
+    segmenter_backend: Literal["sam2", "oneformer"] = "sam2"
+    rtdetr: ObjectDetectorConfig | None = None
+    oneformer: OneFormerConfig | None = None
 
 
 class AppConfig(StrictModel):
