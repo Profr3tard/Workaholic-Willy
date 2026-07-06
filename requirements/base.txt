@@ -6,7 +6,8 @@
 #   requirements/cuda.txt   RTX 5080 workstation (CUDA 12.8+)
 # Dev/CI tooling: requirements/dev.txt
 # Optional layers (not installed by default):
-#   requirements/robot-ur.txt   Universal Robots SDK stack
+#   requirements/robot-ur.txt          Universal Robots SDK stack
+#   requirements/camera-realsense.txt  Intel RealSense RGB-D (pyrealsense2)
 # ──────────────────────────────────────────────────────────────────────────
 pydantic==2.13.4
 PyYAML==6.0.3

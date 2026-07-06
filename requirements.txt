@@ -7,6 +7,7 @@
 #   Dev + CI tooling : pip install -r requirements/dev.txt
 #
 # Optional layers (NOT installed by default):
-#   requirements/robot-ur.txt   Universal Robots SDK stack
+#   requirements/robot-ur.txt          Universal Robots SDK stack
+#   requirements/camera-realsense.txt  Intel RealSense RGB-D (pyrealsense2)
 # ──────────────────────────────────────────────────────────────────────────
 -r requirements/cpu.txt
