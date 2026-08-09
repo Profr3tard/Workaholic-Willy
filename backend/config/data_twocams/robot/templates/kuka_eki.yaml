@@ -1,0 +1,43 @@
+# KUKA EKI/KRL robot config template.
+#
+# This file is not loaded automatically by the config loader. Copy these
+# values into robot.yaml or a deployment-specific profile overlay after the
+# matching KRL/EKI XML contract exists on the controller.
+
+robot:
+  vendor: "kuka"
+
+  motion_limits:
+    max_velocity: 1.0
+    max_acceleration: 0.5
+
+  workspace_limits:
+    x_min: -500.0
+    x_max:  500.0
+    y_min: -500.0
+    y_max:  500.0
+    z_min:  100.0
+    z_max:  600.0
+
+  gripper:
+    vendor: "none"
+    max_width_mm: 150.0
+    min_width_mm: 0.0
+
+  kuka:
+    model: "kr6-r900"
+    controller: "krc4"
+    dof: 6
+    transport: "eki"
+    # KUKA controller network address. Only used when EKI is in client
+    # mode (Willy dials the controller); informational otherwise.
+    controller_ip: "${KUKA_ROBOT_IP:-192.168.1.20}"
+    eki:
+      # Python application's role. For typical EthernetKRL setups, the
+      # robot-side KRL program opens the connection to this Python server.
+      role: "server"
+      host: "${WILLY_EKI_HOST:-0.0.0.0}"
+      port: 7000
+      timeout_s: 5.0
+      heartbeat_s: 0.5
+      buffer_size: 65536

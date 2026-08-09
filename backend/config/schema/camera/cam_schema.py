@@ -221,6 +221,35 @@ class CameraSystemConfig(StrictModel):
                 raise ValueError(f"active_rig_id {self.active_rig_id!r} is not configured")
             if not active.enabled:
                 raise ValueError(f"active_rig_id {self.active_rig_id!r} is disabled")
+
+        # More than one ENABLED RGB-D rig means two physical cameras on one bus, and then the ONLY
+        # stable way to say which is which is the serial number. `RealSenseRGBDStreamer` binds a device
+        # with `rs_config.enable_device(self.serial)` and, with no serial, takes whatever the SDK offers
+        # first -- an order that is not stable across boots or replugs.
+        #
+        # Why that is worse than an outage: two identical D435s that swap identity do not fail. They
+        # produce a complete, plausible scene with left and right exchanged, so every fused position is
+        # mirrored about the rig axis and the pick goes confidently to the wrong place. The September
+        # cell is exactly this case -- two D435s, obliquely mounted -- and the shipped config could not
+        # express it at all (one rig, serial null).
+        rgbd = [r for r in self.rigs if getattr(r, "source", None) == "rgbd" and r.enabled]
+        if len(rgbd) > 1:
+            missing = [r.rig_id for r in rgbd if not getattr(r, "serial_number", None)]
+            if missing:
+                raise ValueError(
+                    f"{len(rgbd)} RGB-D rigs are enabled but these have no serial_number: {missing}. "
+                    "Two identical cameras on one bus can only be told apart by serial; device_index is "
+                    "the SDK's enumeration order and can swap between boots, which silently exchanges "
+                    "the views instead of failing. Read the serials with `rs-enumerate-devices` (or "
+                    "pyrealsense2) and set one per rig."
+                )
+            serials = [str(getattr(r, "serial_number", "")) for r in rgbd]
+            shared = sorted({v for v in serials if serials.count(v) > 1})
+            if shared:
+                raise ValueError(
+                    f"the same serial_number is configured on more than one RGB-D rig: {shared}. "
+                    "Both rigs would bind the same physical camera."
+                )
         return self
 
 
@@ -256,9 +285,20 @@ class StereoMatcherConfig(StrictModel):
     block_size: int = Field(alias="blockSize")
     p1: int | None = Field(default=None, ge=0)
     p2: int | None = Field(default=None, ge=0)
+    #: Percent by which the best match must beat the runner-up before it is trusted. Higher = fewer
+    #: wrong depths on textureless surfaces, at the price of HOLES where nothing wins clearly. This is
+    #: the main "confident but sparse vs dense but wrong" dial.
     uniqueness_ratio: int = Field(alias="uniquenessRatio", ge=0)
+    #: Largest blob of similar disparity still treated as NOISE and cleared. Isolated specks are almost
+    #: always mismatches, and a speck at the wrong depth is worse than a hole because a grasp can be
+    #: planned onto it. ``0`` disables the filter.
     speckle_window_size: int = Field(alias="speckleWindowSize", ge=0)
+    #: How much disparity may vary inside one blob before it counts as a separate surface rather than
+    #: one speckle. Read together with ``speckle_window_size``; alone it does nothing.
     speckle_range: int = Field(alias="speckleRange", ge=0)
+    #: Tolerance (px) of the LEFT-RIGHT consistency check: a pixel is kept only if matching left-to-right
+    #: and right-to-left agree within this. It is the cheapest guard against occlusion-edge depths, which
+    #: are exactly the depths a grasp planner would otherwise aim at. ``-1`` disables the check.
     disp12_max_diff: int = Field(alias="disp12MaxDiff")
 
     # ── Quality knobs (all optional, defaults preserve historical behaviour) ──
@@ -271,7 +311,7 @@ class StereoMatcherConfig(StrictModel):
         description=(
             "Exponential moving average for disparity in realtime mode. "
             "0 = disabled (default), 1 = no smoothing (always latest), "
-            "0<a<1 weights the previous frame by (1-a)."
+            "0<α<1 weights the previous frame by (1-α)."
         ),
     )
     wls: WlsFilterConfig = Field(default_factory=WlsFilterConfig)  # type: ignore[arg-type]
@@ -338,26 +378,3 @@ class HandEyeConfig(StrictModel):
     )
 
 
-class EyeToHandConfig(StrictModel):
-    """Legacy hand-eye sample-collection settings.
-
-    The historical YAML key is still ``eye_to_hand`` and includes a
-    ``mode`` field that can select either mounting. New code should prefer
-    ``CameraConfig.hand_eye`` where eye-to-hand and eye-in-hand have their
-    own typed workflow blocks.
-    """
-
-    mode: Literal["eye_to_hand", "eye_in_hand"] = "eye_in_hand"
-    enabled: bool = True
-    min_samples: int = Field(ge=4)
-    min_distance_mm: float = Field(ge=0.0)
-    min_angle: float = Field(
-        ge=0.0,
-        validation_alias=AliasChoices("min_angle", "min_angle_deg"),
-    )
-    marker_length_mm: float = Field(gt=0.0)
-    aruco_dict_name: ArucoDictName
-
-    @property
-    def min_angle_deg(self) -> float:
-        return self.min_angle

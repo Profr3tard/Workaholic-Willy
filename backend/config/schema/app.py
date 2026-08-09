@@ -15,13 +15,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from ._base import StrictModel
 from .camera import (
     CameraSystemConfig,
     HandEyeConfig,
-    EyeToHandConfig,
     StereoMatcherConfig,
 )
 from .models import (
@@ -37,33 +36,12 @@ from .robot import RobotConfig
 from .runtime import RuntimeConfig
 
 
-class CameraCalibrationQualityBandsPx(StrictModel):
-    """RMSE thresholds (px) for stereo camera calibration quality."""
-
-    excellent: float = Field(default=0.5, gt=0.0)
-    good: float = Field(default=1.0, gt=0.0)
-    marginal: float = Field(default=2.0, gt=0.0)
-
-    @model_validator(mode="after")
-    def _check_ordering(self) -> CameraCalibrationQualityBandsPx:
-        if not (self.excellent < self.good < self.marginal):
-            raise ValueError(
-                f"quality bands must be strictly ordered: "
-                f"{self.excellent} < {self.good} < {self.marginal}"
-            )
-        return self
-
-
 class CameraConfig(StrictModel):
     """Camera section: rigs, stereo matcher and hand-eye calibration."""
 
     cameras: CameraSystemConfig
     stereomatcher: StereoMatcherConfig
-    eye_to_hand: EyeToHandConfig
     hand_eye: HandEyeConfig = Field(default_factory=HandEyeConfig)
-    quality_bands_px: CameraCalibrationQualityBandsPx = Field(
-        default_factory=CameraCalibrationQualityBandsPx
-    )
 
 
 class ModelsConfig(StrictModel):

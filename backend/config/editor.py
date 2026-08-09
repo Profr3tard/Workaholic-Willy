@@ -205,7 +205,8 @@ def apply_basic_settings(
     if robot_vendor:
         robot_root["vendor"] = robot_vendor
     if robot_ip:
-        # Route the IP into the matching vendor block. If no
+        # Vendor-block schema: the flat ``connection:`` key
+        # is gone. Route the IP into the matching vendor block. If no
         # vendor is set in the patch, default to UR so existing
         # operator workflows that only edit the IP keep working.
         target_vendor = robot_vendor or "ur"

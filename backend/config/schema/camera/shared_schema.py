@@ -85,10 +85,13 @@ class QualityConfig(StrictModel):
 
 
 class CalibrationConfig(StrictModel):
-    """Stereo-calibration ChArUco board parameters + the shared ArUco marker settings.
+    """Stereo-calibration ChArUco board parameters + this block's ArUco marker settings.
 
-    The calibration board and the standalone hand-eye marker share
-    ``aruco_dict_name`` so the whole pipeline uses one ArUco dictionary.
+    These describe the STEREO board only. The standalone hand-eye marker is a SEPARATE physical
+    artefact configured under ``camera.hand_eye`` and may use a different dictionary -- under
+    ``WILLY_PROFILE=sim`` it demonstrably does (stereo ``DICT_5X5_100`` / 50 mm vs hand-eye
+    ``DICT_4X4_50`` / 48 mm). There is deliberately no cross-block validator tying them: OpenCV allows
+    different dictionaries, and the board and the single marker are different objects.
     """
 
     charuco_squares_x: int = Field(gt=1)
