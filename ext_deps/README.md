@@ -1,13 +1,13 @@
 # `ext_deps/` local install root for Workaholic-Willys external dependencies
 
-[!NOTE]
+> [!NOTE]
 > This directory contains the local installation root for all external dependencies required by Workaholic-Willy.
 > **ISAAC-SIM is not included** in this directory and must be installed separately.
 > Please refer to the [ISAAC-SIM installation instructions](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/quick-install.html) for guidance.
 > *Reminder: Watch out if your system is meeting the *:
 > See here for help: [ISAAC-SIM system requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html).*
 
-[!WARNING]
+> [!WARNING]
 > None of the external dependencies are hard ones.
 > We still recommend installing *CuRobo* and *Coal* especially if you are planning to use
 > this project for real robotics applications.
