@@ -4,7 +4,7 @@
 > This directory contains the local installation root for all external dependencies required by Workaholic-Willy.
 > **ISAAC-SIM is not included** in this directory and must be installed separately.
 > Please refer to the [ISAAC-SIM installation instructions](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/quick-install.html) for guidance.
-> *Reminder: Watch out if your system is meeting the *:
+> *Reminder: Watch out if your system is meeting the:*
 > See here for help: [ISAAC-SIM system requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html).*
 
 > [!WARNING]
