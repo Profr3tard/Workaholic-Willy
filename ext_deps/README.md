@@ -1,52 +1,51 @@
-# `ext_deps/` — local install root for Workaholic-Willy's external dependencies
+# `ext_deps/` local install root for Workaholic-Willys external dependencies
 
-This folder is the **one canonical place** where Willy's heavy, machine-local dependencies get
-installed. Nothing here is committed — the whole folder is gitignored except this README and the
-`.gitignore` — but the **code defaults now look here**, so a fresh box has one obvious install target
-instead of scattered `D:\…` paths.
+[!NOTE]
+> This directory contains the local installation root for all external dependencies required by Workaholic-Willy.
+> **ISAAC-SIM is not included** in this directory and must be installed separately.
+> Please refer to the [ISAAC-SIM installation instructions](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/quick-install.html) for guidance.
+> *Reminder: Watch out if your system is meeting the *:
+> See here for help: [ISAAC-SIM system requirements](https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html).*
 
-**Isaac Sim is the deliberate exception** — it is a multi-GB standalone installer with its own bundled
-Python and stays where NVIDIA puts it (`D:\isaacsim\…`). Everything *else* Willy bridges to lives here.
+[!WARNING]
+> None of the external dependencies are hard ones.
+> We still recommend installing *CuRobo* and *Coal* especially if you are planning to use
+> this project for real robotics applications.
+> We are not responsible for any issues or damages that can occur on your Robot or system.
+> *Always be careful and follow the instructions provided.*
+> *We highly recommend testing your setup thoroughly in simulation. Before deploying to real hardware.*
 
-None of these are hard dependencies: without them Willy falls back (cuRobo → blind-IK, Coal → capsule
-self-collision, SuctionNet → analytical scorer), and mock mode / CI never touch them. They are measured
-enhancements for the on-box validation cell.
 
-## Layout & what satisfies which default
+# Layout & Lockfiles
 
-| Subfolder | What to install | Wired via (default when unset) |
-|---|---|---|
-| `curobo_env/` | micromamba env, **Python 3.10** + cuRobo deps (torch cu128, cuda-toolkit 12.8) | `WILLY_CUROBO_PYTHON` → `ext_deps/curobo_env/python.exe` |
-| `curobo/` | NVlabs/curobo source clone (`pip install -e .[cu12]`) | the cuRobo package is found via `curobo_env` (pip -e) |
-| `coal_env/` | micromamba env with **Coal** (`conda install coal -c conda-forge`) | `WILLY_COAL_PREFIX` → `ext_deps/coal_env` |
-| `suctionnet/` | SuctionNet-baseline repo + weights (optional, experimental) | `WILLY_SUCTIONNET_PREFIX` / `WILLY_SUCTIONNET_WEIGHTS` (set manually) |
+|Subfolder|Description|Wired via|
+|---------|-----------|---------|
+|`micromamba/`|private package manager| - |
+|`locks/`|conda package pinned by URL&hash| cosumed by install script|
+|`curobo_env/`|CuRobo conda environment| `WILLY_CUROBO_PYTHON` -> `ext_deps/curobo_env/` -> `python.exe`|
+|`curobo/`|CuRobo source code| - |
+|`coal_env/`|Coal conda environment| `WILLY_COAL_PYTHON` -> `ext_deps/coal_env/`|
 
-Install elsewhere if you prefer — just set the matching `WILLY_*` env var and the default is ignored.
+## Install
 
-## Install (from the repo root)
-
-> Full per-tool detail — versions, the ur5e config generator, troubleshooting — lives in
-> [`docs/external-deps.md`](../docs/external-deps.md) (umbrella) and the linked
-> [`docs/curobo-setup.md`](../docs/curobo-setup.md) · [`docs/coal-setup.md`](../docs/coal-setup.md) ·
-> [`docs/suctionnet-setup.md`](../docs/suctionnet-setup.md).
-
-```bash
-# Coal — exact mesh self-collision backend
-micromamba create -y -p ext_deps/coal_env coal -c conda-forge
-
-# cuRobo — collision-aware motion planner (own py3.10 env; warp differs from Isaac's)
-micromamba create -y -p ext_deps/curobo_env -c conda-forge -c nvidia python=3.10 cuda-toolkit=12.8 git-lfs
-ext_deps/curobo_env/python.exe -m pip install "torch==2.7.0" --index-url https://download.pytorch.org/whl/cu128
-git clone https://github.com/NVlabs/curobo ext_deps/curobo
-ext_deps/curobo_env/python.exe -m pip install -e ext_deps/curobo/.[cu12] --no-build-isolation
-# generate the ur5e cuRobo config (writes into cuRobo's content dir):
-ext_deps/curobo_env/python.exe docs/curobo/build_ur5e_config.py
-
-# SuctionNet — optional learned suction net (bucket-③; ~0.07 sim2real on Isaac RGB, so opt-in)
-git clone https://github.com/graspnet/suctionnet-baseline ext_deps/suctionnet
-export WILLY_SUCTIONNET_PREFIX="ext_deps/suctionnet/neural_network"
-export WILLY_SUCTIONNET_WEIGHTS="ext_deps/suctionnet/weights/realsense-deeplabplus-RGBD"
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_ext_deps.ps1
 ```
 
-That's it — the runtime picks up `ext_deps/curobo_env` and `ext_deps/coal_env` with **no env vars set**.
-Verify the wiring with `python -m backend.config` (green) and, on-box, any `run_*` pick.
+From nothing to a verified stack: it bootstraps micromamba into this folder, builds both environments
+from `locks/`, clones and pins cuRobo, installs **both** of its kernel backends, generates the ur5e +
+ur3e descriptors, and ends by running the doctor — so its **exit code means "this box can plan"**, not
+"the downloads finished". `-Clean` deletes the targets first, which is how you test that it really does
+rebuild from nothing. `-Component coal|curobo` does one of them.
+
+```bash
+python -m backend.src.robot.safety.planning --doctor   # 0 healthy | 1 degraded | 2 blocked by policy
+```
+
+
+> **The lockfiles are not a nicety.** On Windows, Smart App Control refuses unsigned native code that
+> Microsoft's reputation service does not vouch for, and a conda build published days ago usually has no
+> reputation yet — so an unpinned `micromamba create` can produce an environment that installs perfectly
+> and then cannot load. The pins are chosen to be builds that load. Read
+> [`docs/code-integrity.md`](../docs/code-integrity.md) before changing them; re-lock with
+> `micromamba env export --explicit` and re-run the doctor.
