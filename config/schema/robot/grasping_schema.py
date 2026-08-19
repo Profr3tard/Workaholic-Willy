@@ -1120,6 +1120,19 @@ class FusionGeometryConfig(StrictModel):
             "touching objects."
         ),
     )
+    score_voxel_mm: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=50.0,
+        description=(
+            "Decimate each cloud to one point per this many mm BEFORE the association SCORING ONLY. "
+            "0.0 (default) = off, byte-identical. The fused cloud handed to the grasp generator is "
+            "rebuilt from the ORIGINAL full-resolution clouds, so this makes the MATCH DECISION "
+            "cheaper without making the geometry coarser. It exists because `_overlap_fraction` "
+            "documents its own precondition -- 'the clouds are a few thousand points at most' and "
+            "a data-generation corpus violates it by an order of magnitude"
+        ),
+    )
     max_centroid_mm: float = Field(
         default=150.0,
         gt=0.0,
