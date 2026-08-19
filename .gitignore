@@ -31,3 +31,22 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+
+# -------------------------------- 
+# Willy extra stuff
+# --------------------------------
+
+# Runtime logs + generated run artifacts (soak reports, JSONL records, demo MP4s, calibration dumps)
+logs/
+
+# Isaac Sim / crash dumps
+*.dmp
+
+# Generated datasets (datagen). Large; the output path is configurable and defaults here.
+data/
+
+# Downloaded model weights (HuggingFace cache). One folder for every large weight file,
+# so a clone lands in the same layout without carrying gigabytes -- assets/models/ itself
+# stays tracked, because the small committed models (success_probability) live there too.
+assets/models/hf/
