@@ -1,7 +1,0 @@
-# Phase T7 preset — verification-heavy closed loop with recovery enabled.
-grasping:
-  default_mode: closed_loop
-  recovery:
-    enabled: true
-    allowed_actions:
-      - next_viewpoint

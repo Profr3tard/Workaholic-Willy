@@ -1,3 +1,0 @@
-# DEPRECATED shim — use requirements/cuda.txt (CUDA 12.8 wheels for the RTX 5080).
-# Kept so existing references/docs do not break.
--r requirements/cuda.txt
