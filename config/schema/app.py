@@ -47,11 +47,11 @@ class CameraConfig(StrictModel):
 class ModelsConfig(StrictModel):
     """ML / CV model configurations."""
 
-    handdetect: HandDetectConfig
-    gesturedetect: GestureDetectConfig
     objectdetector: ObjectDetectorConfig
     segmenter: SegmenterConfig
     stt: SpeechToTextConfig
+    handdetect: HandDetectConfig = Field(default_factory=HandDetectConfig)
+    gesturedetect: GestureDetectConfig = Field(default_factory=GestureDetectConfig)
     detector: Literal["groundingdino", "rtdetr"] = "groundingdino"
     segmenter_backend: Literal["sam2", "oneformer"] = "sam2"
     rtdetr: ObjectDetectorConfig | None = None

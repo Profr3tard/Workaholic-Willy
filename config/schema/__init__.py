@@ -1,4 +1,9 @@
-"""Public schema surface for the configuration package."""
+"""Public schema surface for the configuration package.
+
+Import from here rather than reaching into ``camera``, ``models`` or
+``robot`` submodules. Internal modules are re-exported as a courtesy
+but their layout is not part of the stable contract.
+"""
 
 from ._base import StrictModel, validate_aruco_dict_name
 from .app import (
@@ -25,8 +30,6 @@ from .camera import (
     WlsFilterConfig,
 )
 from .models import (
-    GestureDetectConfig,
-    HandDetectConfig,
     InferenceOptimization,
     ObjectDetectorConfig,
     SegmenterConfig,
@@ -47,11 +50,7 @@ from .robot import (
     WorkspaceLimitsConfig,
 )
 from .runtime import (
-    DecisionImagesConfig,
-    EventHubConfig,
     ImageEncodingConfig,
-    InteractionConfig,
-    RunRegistryConfig,
     RuntimeConfig,
 )
 
@@ -64,21 +63,16 @@ __all__ = [
     "CalibrationConfig",
     "CameraConfig",
     "CameraSystemConfig",
-    "DecisionImagesConfig",
     "DummyConfig",
-    "EventHubConfig",
     "EyeHandRoutineConfig",
     "EyeInHandWorkflowConfig",
     "EyeToHandWorkflowConfig",
     "HandEyeConfig",
     # Models
-    "GestureDetectConfig",
     # Robot
     "GripperConfig",
-    "HandDetectConfig",
     "ImageEncodingConfig",
     "InferenceOptimization",
-    "InteractionConfig",
     "ModelsConfig",
     "MotionLimitsConfig",
     "ObjectDetectorConfig",
@@ -89,7 +83,6 @@ __all__ = [
     "RobotCalibrationQualityBandsMm",
     "RobotConfig",
     "RobotSafetyConfig",
-    "RunRegistryConfig",
     "RuntimeConfig",
     "SafePoseConfig",
     "SegmenterConfig",
