@@ -16,11 +16,21 @@ to the active device with pinned-memory + ``non_blocking`` copies
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 
+from src.utility.constants import DEVICE_LOG_FILE, utility_logger
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from logging import Logger
+
 _VALID_PREFS = {"auto", "cuda", "cpu", "mps"}
+
+
+def _log() -> Logger:
+    """Logger for this module, built on first use (see :func:`utility_logger`)."""
+    return utility_logger("UtilityDevice", DEVICE_LOG_FILE)
 
 
 def _normalize_pref(pref: str | None) -> str:
@@ -53,21 +63,29 @@ def get_device(prefer: str | None = None) -> torch.device:
             raise RuntimeError(
                 "WILLY_DEVICE=cuda requested but CUDA is not available."
             )
+        _log().info("device: pref=cuda (forced) -> cuda")
         return torch.device("cuda")
     if pref == "mps":
         if not torch.backends.mps.is_available():
             raise RuntimeError(
                 "WILLY_DEVICE=mps requested but MPS is not available."
             )
+        _log().info("device: pref=mps (forced) -> mps")
         return torch.device("mps")
     if pref == "cpu":
+        _log().info("device: pref=cpu (forced) -> cpu")
         return torch.device("cpu")
 
     # auto
     if torch.cuda.is_available():
+        _log().info("device: pref=auto -> cuda")
         return torch.device("cuda")
     if torch.backends.mps.is_available():
+        _log().info("device: pref=auto -> mps")
         return torch.device("mps")
+    _log().warning(
+        "device: pref=auto found neither CUDA nor MPS -> cpu; model inference will be slow"
+    )
     return torch.device("cpu")
 
 
@@ -85,7 +103,9 @@ def resolve_torch_dtype(
     On CPU/MPS it resolves to ``float32``.
     """
     if name is None or name == "" or str(name).lower() == "auto":
-        return torch.float16 if device.type == "cuda" else torch.float32
+        resolved = torch.float16 if device.type == "cuda" else torch.float32
+        _log().debug("dtype: auto on %s -> %s", device.type, resolved)
+        return resolved
 
     key = str(name).strip().lower()
     mapping: dict[str, torch.dtype] = {
@@ -102,7 +122,14 @@ def resolve_torch_dtype(
 
     dtype = mapping[key]
     if dtype != torch.float32 and device.type != "cuda":
+        _log().warning(
+            "dtype: configured %r downgraded to float32 -- the %s backend cannot use "
+            "half precision",
+            name,
+            device.type,
+        )
         return torch.float32
+    _log().debug("dtype: configured %r -> %s", name, dtype)
     return dtype
 
 
@@ -118,16 +145,24 @@ def move_inputs_to_device(
     """
     out: dict[str, Any] = {}
     is_cuda_dev = device.type == "cuda"
+    pin_failures = 0
     for k, v in inputs.items():
         if torch.is_tensor(v):
             if is_cuda_dev and v.device.type == "cpu" and not v.is_pinned():
                 try:
                     v = v.pin_memory()
                 except (RuntimeError, ValueError):
-                    pass
+                    passpin_failures += 1
             out[k] = v.to(device, non_blocking=non_blocking and is_cuda_dev)
         else:
             out[k] = v
+    if pin_failures:
+        _log().debug(
+            "move_inputs_to_device: %d of %d entries could not be pinned; "
+            "host->device copies fall back to blocking",
+            pin_failures,
+            len(inputs),
+        )
     return out
 
 
