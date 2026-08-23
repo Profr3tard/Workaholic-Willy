@@ -29,9 +29,16 @@ from pathlib import Path
 from typing import Any
 
 from src.geometry import Frame, GeometryError, Transform, transform_from_dict, transform_to_dict
+from src.utility.log_cfg import create_logger
 
+from .constants import SERIALIZATION_LOG_FILE, CALIBRATION_LOG_DIR
 from .exceptions import ExtrinsicsError
 from .extrinsics import EXTRINSICS_SCHEMA, Extrinsics
+
+
+logger = create_logger(
+    "CalibrationSerialization", SERIALIZATION_LOG_FILE, log_dir=CALIBRATION_LOG_DIR
+)
 
 #: Wire schema for a persisted eye-in-hand CAMERA->TOOL calibration transform. Kept separate from
 #: :data:`EXTRINSICS_SCHEMA` (which is CAMERA->BASE-locked) so an EIH wrist camera has a TYPED artifact
@@ -117,6 +124,17 @@ def save_extrinsics(path: str | Path, ext: Extrinsics) -> Path:
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
     tmp.replace(target)
+    # The artifact a later pick depends on: record WHICH file now carries WHICH solve quality,
+    # so a bad pick can be traced back to the calibration run that produced this transform.
+    logger.info(
+        "Extrinsics written: %s (rig=%s, samples=%d, rmse=%.3f mm, quality=%s, %d bytes).",
+        target,
+        ext.rig_id,
+        int(ext.num_samples),
+        float(ext.rmse_mm),
+        ext.quality,
+        len(payload.encode("utf-8")),
+    )
     return target
 
 
@@ -129,7 +147,16 @@ def load_extrinsics(path: str | Path) -> Extrinsics:
         raise ExtrinsicsError(f"load_extrinsics: {path!s} is not valid JSON") from exc
     if not isinstance(data, Mapping):
         raise ExtrinsicsError(f"load_extrinsics: top-level JSON must be an object, got {type(data).__name__}")
-    return extrinsics_from_dict(data)
+    ext = extrinsics_from_dict(data)
+    logger.info(
+        "Extrinsics loaded: %s (rig=%s, rmse=%.3f mm, quality=%s, captured %s).",
+        path,
+        ext.rig_id,
+        float(ext.rmse_mm),
+        ext.quality,
+        ext.captured_at.isoformat(),
+    )
+    return ext
 
 
 # ----------------------------------------------------------------------
@@ -158,6 +185,12 @@ def save_cam_to_tool(path: str | Path, transform: Transform, *, rig_id: str) -> 
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
     tmp.replace(target)
+    logger.info(
+        "CAMERA->TOOL transform written: %s (rig=%s, %d bytes).",
+        target,
+        str(rig_id),
+        len(payload.encode("utf-8")),
+    )
     return target
 
 
@@ -181,4 +214,5 @@ def load_cam_to_tool(path: str | Path) -> Transform:
             "load_cam_to_tool: stored transform must be CAMERA -> TOOL; got "
             f"{transform.from_frame.value} -> {transform.to_frame.value}"
         )
+    logger.info("CAMERA->TOOL transform loaded: %s (rig=%s).", path, data.get("rig_id"))
     return transform

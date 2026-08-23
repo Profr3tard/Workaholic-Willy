@@ -11,7 +11,11 @@ import numpy as np
 
 from src.geometry.validation import validate_homogeneous_matrix
 
+from src.calibration.constants import CALIBRATION_LOG_DIR, EYE_HAND_DATASET_LOG_FILE
 from src.calibration.exceptions import CalibrationDataError
+from src.utility.log_cfg import create_logger
+
+logger = create_logger("EyeHandDataset", EYE_HAND_DATASET_LOG_FILE, log_dir=CALIBRATION_LOG_DIR)
 
 __all__ = [
     "EYE_HAND_DATASET_SCHEMA",
@@ -114,6 +118,12 @@ class EyeHandDataset:
         tmp = target.with_suffix(target.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(target)
+        logger.info(
+            "Dataset written: %s (%d samples, %d bytes).",
+            target,
+            len(self._samples),
+            target.stat().st_size,
+        )
         return target
 
     @classmethod
@@ -132,7 +142,9 @@ class EyeHandDataset:
         samples = data.get("samples")
         if not isinstance(samples, list):
             raise CalibrationDataError("eye-hand dataset must contain a samples list")
-        return cls([EyeHandSample.from_dict(sample) for sample in samples])
+        dataset = cls([EyeHandSample.from_dict(sample) for sample in samples])
+        logger.info("Dataset loaded: %s (%d samples, schema %s).", path, len(dataset), schema)
+        return dataset
 
     def __len__(self) -> int:
         return len(self._samples)

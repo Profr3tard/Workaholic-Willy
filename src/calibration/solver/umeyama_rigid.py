@@ -13,7 +13,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from src.calibration.constants import CALIBRATION_LOG_DIR, UMEYAMA_RIGID_LOG_FILE
+from src.utility.log_cfg import create_logger
+
 __all__ = ["UmeyamaRigid"]
+
+logger = create_logger("UmeyamaRigid", UMEYAMA_RIGID_LOG_FILE, log_dir=CALIBRATION_LOG_DIR)
 
 
 class UmeyamaRigid:
@@ -86,6 +91,7 @@ class UmeyamaRigid:
         R = Vt.T @ U.T
 
         if np.linalg.det(R) < 0:
+            logger.debug("Reflection in the SVD solution; flipping the last singular vector.")
             Vt[-1, :] *= -1
             R = Vt.T @ U.T
 
@@ -94,4 +100,10 @@ class UmeyamaRigid:
         residuals = dst - (src @ R.T + t)
         rmse = float(np.sqrt(np.mean(np.sum(residuals ** 2, axis=1))))
 
+        logger.info(
+            "Registered %d point pairs: rmse=%.4f, |t|=%.4f (input units).",
+            src.shape[0],
+            rmse,
+            float(np.linalg.norm(t)),
+        )
         return R, t, rmse

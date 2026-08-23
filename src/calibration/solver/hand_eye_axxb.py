@@ -50,9 +50,13 @@ from __future__ import annotations
 
 import numpy as np
 
+from src.calibration.constants import CALIBRATION_LOG_DIR, HAND_EYE_AXXB_LOG_FILE
 from src.calibration.exceptions import CalibrationDataError, CalibrationSolveError
+from src.utility.log_cfg import create_logger
 
 __all__ = ["HandEyeAXXB"]
+
+logger = create_logger("HandEyeAXXB", HAND_EYE_AXXB_LOG_FILE, log_dir=CALIBRATION_LOG_DIR)
 
 _MIN_PAIRS = 3
 
@@ -212,6 +216,13 @@ class HandEyeAXXB:
         X[:3, 3] = t_X
 
         rmse = self._residual_rmse(A_mats, B_mats, X)
+
+        logger.info(
+            "Solved X from %d pairs: residual rmse=%.4f, |t_X|=%.2f mm.",
+            len(A_mats),
+            rmse,
+            float(np.linalg.norm(t_X)),
+        )
         return X, rmse
 
     @staticmethod

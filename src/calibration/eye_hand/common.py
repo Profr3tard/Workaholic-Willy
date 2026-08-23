@@ -9,14 +9,20 @@ import numpy as np
 
 from src.geometry.matrix import invert_homogeneous
 
+from src.calibration.constants import CALIBRATION_LOG_DIR, EYE_HAND_CALIBRATOR_LOG_FILE
 from src.calibration.exceptions import CalibrationDataError, CalibrationSolveError
 from src.calibration.quality import DEFAULT_BANDS_MM, QualityBandsMm
 from src.calibration.solver import HandEyeAXXB
+from src.utility.log_cfg import create_logger
 
 from .dataset import EyeHandDataset, EyeHandSample
 from .types import EyeHandCalibrationSettings
 
 __all__ = ["BaseEyeHandCalibrator"]
+
+logger = create_logger(
+    "EyeHandCalibrator", EYE_HAND_CALIBRATOR_LOG_FILE, log_dir=CALIBRATION_LOG_DIR
+)
 
 
 def _rotation_angle_deg(T_first: np.ndarray, T_second: np.ndarray) -> float:
@@ -86,6 +92,7 @@ class BaseEyeHandCalibrator:
     ) -> bool:
         """Validate and append a sample, returning False for skipped detections."""
         if T_cam_to_marker is None:
+            logger.info("Sample skipped: no marker pose (marker_id=%d).", marker_id)
             return False
         sample = EyeHandSample(
             T_base_to_tool=T_base_to_tool,
@@ -103,8 +110,20 @@ class BaseEyeHandCalibrator:
                 for existing in self.dataset.iter_samples()
             )
             if not has_diverse_pose:
+                logger.info(
+                    "Sample rejected: pose not diverse (needs > %.1f mm or > %.1f deg from "
+                    "every one of the %d stored poses).",
+                    self.settings.min_distance_mm,
+                    self.settings.min_angle_deg,
+                    len(self.dataset),
+                )
                 return False
         self.dataset.add_sample(sample)
+        logger.debug(
+            "Sample accepted (marker_id=%d, dataset now %d samples).",
+            marker_id,
+            len(self.dataset),
+        )
         return True
 
     def save_dataset(self, path: str | Path) -> Path:
@@ -158,6 +177,13 @@ class BaseEyeHandCalibrator:
             for A, B in zip(A_mats, B_mats)
         ]
         max_error = max(residuals) if residuals else float(rmse)
+        logger.info(
+            "AX=XB solved over %d motion pairs from %d samples: rmse=%.3f mm, max=%.3f mm.",
+            len(A_mats),
+            len(self.dataset),
+            float(rmse),
+            float(max_error),
+        )
         return transform_matrix, float(rmse), float(max_error)
 
     @staticmethod
