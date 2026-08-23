@@ -34,7 +34,7 @@ pyrealsense2>=2.54
 # For UR robots, we use the `ur_rtde` library to communicate with the robot
 # For KUKA robots, we use the `kuka-iiwa` library to communicate with the robot.
 ur_rtde==1.6.5
-kuka-iiwa==0.1.0
+#kuka-iiwa==0.1.0
 python-fcl==0.7.0.11 # Fallback to `python-fcl` if `COAL` is not available.
 
 # Signing and authentication of training data and models.
