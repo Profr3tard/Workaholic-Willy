@@ -21,10 +21,10 @@ matplotlib==3.10.8
 transformers==5.5.4
 
 # Torch and torchvision are pinned with CUDA support for GPU acceleration.
-# If you want to use CPU-only, please refer to requirements-cpu.txt.
---extra-index-url https://download.pytorch.org/whl/cu128
-torch==2.7.1+cu128
-torchvision==0.22.1+cu128
+# This is the CPU-only version of the requirements file.
+# If you want to use GPU acceleration, please refer to requirements.txt.
+torch==2.7.1
+torchvision==0.22.1
 
 # Camera support for Intel RealSense cameras.
 # We highly recommend using a Intel RealSense camera for 3D perception tasks.
