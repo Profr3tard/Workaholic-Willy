@@ -1,9 +1,0 @@
-# CUDA runtime for the RTX 5080 workstation.
-#
-# The RTX 5080 is Blackwell (compute capability sm_120) and REQUIRES CUDA 12.8+.
-# torch 2.7.1 cu128 wheels carry sm_120 kernels; the old cu121 pin would not and
-# must be avoided on this GPU.
--r base.txt
---extra-index-url https://download.pytorch.org/whl/cu128
-torch==2.7.1
-torchvision==0.22.1

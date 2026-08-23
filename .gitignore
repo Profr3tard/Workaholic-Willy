@@ -50,3 +50,10 @@ data/
 # so a clone lands in the same layout without carrying gigabytes -- assets/models/ itself
 # stays tracked, because the small committed models (success_probability) live there too.
 assets/models/hf/
+
+# Operator-downloaded MediaPipe task bundles (hand/gesture)
+assets/models/mediapipe/
+
+# Frontend (the operator console).
+frontend/node_modules/
+api/static/

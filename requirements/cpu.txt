@@ -1,9 +1,0 @@
-# CPU-only runtime = base + CPU PyTorch wheels.
-# Used by CI (no GPU) and the macOS dev laptop (the PyPI wheel ships MPS support).
-#
-# torchvision 0.22.1 is the release that pairs with torch 2.7.1. The previously
-# pinned 0.15.2 was built for torch 2.0.1 and is INCOMPATIBLE with 2.7.1.
--r base.txt
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.7.1
-torchvision==0.22.1
