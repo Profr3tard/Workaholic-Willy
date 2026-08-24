@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from backend.src.robot.grasping.planning import GraspPose
+from src.robot.grasping.planning import GraspPose
 
 from .gripper_model import GripperGeometryStrategy, ParallelJawGripperModel, points_to_grasp_frame
 from .table_collision import SupportPlane, gripper_table_clearance_mm
