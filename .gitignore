@@ -32,28 +32,28 @@ Thumbs.db
 .idea/
 *.swp
 
-
-# -------------------------------- 
-# Willy extra stuff
-# --------------------------------
-
-# Runtime logs + generated run artifacts (soak reports, JSONL records, demo MP4s, calibration dumps)
-logs/
-
-# Isaac Sim / crash dumps
-*.dmp
-
 # Generated datasets (datagen). Large; the output path is configurable and defaults here.
 data/
 
-# Downloaded model weights (HuggingFace cache). One folder for every large weight file,
-# so a clone lands in the same layout without carrying gigabytes -- assets/models/ itself
-# stays tracked, because the small committed models (success_probability) live there too.
+# Downloaded model weights (HuggingFace cache).
 assets/models/hf/
-
-# Operator-downloaded MediaPipe task bundles (hand/gesture)
-assets/models/mediapipe/
 
 # Frontend (the operator console).
 frontend/node_modules/
 api/static/
+
+# Operator-downloaded MediaPipe task bundles (hand/gesture).
+assets/models/mediapipe/
+
+# The fitted grasp ranker's TREES.
+assets/models/grasp_ranker/**/*.json
+!assets/models/grasp_ranker/**/*.card.json
+
+# Third-party meshes for the scene generator (GSO / YCB, CC-BY).
+# Fetched via scripts/assets/meshes/fetch.py
+assets/meshes/
+
+# Trained grasp-generator artifacts.
+*.ckpt.pt
+grasp_generator_v1.pt
+logs/dl/models/
