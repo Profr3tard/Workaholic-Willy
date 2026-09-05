@@ -23,7 +23,7 @@ from src.calibration.exceptions import StereoCalibrationError
 from src.calibration.helpers import validate_image_pair_shapes
 
 if TYPE_CHECKING:  # pragma: no cover (typing only)
-    from config.schema.camera import StereoMatcherConfig
+    from src.config.schema.camera import StereoMatcherConfig
 
 __all__ = ["DisparityComputer"]
 

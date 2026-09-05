@@ -13,7 +13,7 @@ from .sub_modules.aruco_esti import ArucoPoseEstimator
 from src.calibration.exceptions import StereoCalibrationError
 
 if TYPE_CHECKING:  # pragma: no cover (typing only)
-    from config.schema.camera import CalibrationConfig, StereoMatcherConfig
+    from src.config.schema.camera import CalibrationConfig, StereoMatcherConfig
 
 __all__ = ["StereoCam3D"]
 

@@ -1,0 +1,3 @@
+runtime:
+  image_encoding:
+    frame_quality: 61

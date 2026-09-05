@@ -1,0 +1,32 @@
+# Phase T7 locked KPI thresholds (Q8=A).
+# Edit values per deployment; the schema lives at
+# src/config/schema/robot/kpi_schema.py.
+#
+# THREE MORE GATES WERE LOCKED AND NEVER MECHANISED, and they are written down here because the
+# document that held them is being deleted. They came from the Phase T plan's clause list, which
+# carried ten gates; the seven below are the ones with a fixed bound, and a fixed bound is the only
+# kind this file can express. These three are DELTA gates: each one compares against a T0 baseline
+# run, and nothing in the repo computes that comparison. Recording them as live keys would imply a
+# check that does not exist, so they sit here as the target they always were.
+#
+#   dense.pick_success_rate           must improve by at least +3.0 absolute percentage points
+#                                     against the T0 baseline, by the end of T6
+#   dense.first_attempt_success_rate  must improve by at least +2.0 absolute percentage points
+#   dense.safety_rejection_rate       may rise by at most +0.5 absolute percentage points;
+#                                     anything higher fails unless it is explicitly approved
+#
+# Whether Phase T ever hit them was never measured. Asking that question later needs a T0 baseline
+# and a paired run, which is what `python -m src.robot.grasping.replay --baseline-report`
+# and the soak gate exist to produce.
+easy:
+  false_positive_grasp_rate_max: 0.005
+  dead_loop_rate_max: 0.0
+  median_cycle_time_increase_pct_max: 5.0
+auto:
+  dead_loop_rate_max: 0.002
+dense:
+  dead_loop_rate_max: 0.01
+  false_positive_grasp_rate_max: 0.02
+soak:
+  min_attempts: 1000
+  dead_loop_rate_max: 0.005

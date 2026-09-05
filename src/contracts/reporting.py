@@ -1,7 +1,7 @@
 """What a verb hands back: the two halves of a result, named once.
 
 This file exists to prevent a result computed in one place and formatted in two.
-`config/explain.py` already makes the argument: `KeyExplanation` was split out
+`src/config/explain.py` already makes the argument: `KeyExplanation` was split out
 from its text so the operator console and the terminal could not drift, because
 re-deriving "which layer won" in the browser would be a second implementation of
 the one question that module answers. That reasoning applied to one class; this

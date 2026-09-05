@@ -3,7 +3,7 @@ from __future__ import annotations
 import cv2 as cv
 import logging
 
-from config.schema.camera import WebcamPairRigConfig
+from src.config.schema.camera import WebcamPairRigConfig
 from src.camera.setup.image_taking.frames import StereoFrame
 from src.camera.setup.quality import configure_camera_for_quality
 

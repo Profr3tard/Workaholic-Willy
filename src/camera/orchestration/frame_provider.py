@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:                                    # pragma: no cover (typing only)
     import numpy as np
 
-from config.schema.camera import (
+from src.config.schema.camera import (
     RGBDDeviceRigConfig,
     SingleDeviceRigConfig,
     WebcamPairRigConfig,

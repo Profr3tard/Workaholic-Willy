@@ -4,7 +4,7 @@ import cv2 as cv
 import logging
 import numpy as np
 
-from config.schema.camera import SingleDeviceRigConfig
+from src.config.schema.camera import SingleDeviceRigConfig
 from src.camera.setup.image_taking.frames import StereoFrame
 from src.camera.setup.quality import configure_camera_for_quality
 

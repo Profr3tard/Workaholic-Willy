@@ -1,0 +1,40 @@
+# ============================================================================
+# CONSOLE DUMMY   --profile console_dummy
+#
+# A cell the operator console can drive END TO END with no hardware at all: no controller, no camera,
+# no GPU. Every screen (preflight, prepare, connect, pick with its live event stream, history)
+# becomes exercisable at a desk, which is what the frontend is developed and reviewed against.
+#
+# WHAT IT IS NOT. This proves the CONSOLE, never the cell. A dummy arm accepts every motion and
+# reports success, so a green run here says the UI and the API agree, and nothing whatsoever about
+# grasping. The honest cell-level validation lives elsewhere and is already done: `ursim` drives real
+# UR controller software (measured 20/20 on both UR3e and UR5e), and Isaac drives the perception and
+# grasp stack. This profile deliberately replaces both, and a screen that renders a dummy run must
+# not imply otherwise; `CellOut.vendor` and `TelemetryOut.simulated` are how the UI says so.
+#
+# Pair it with `POST /v1/cell/build?rehearse=true`, which substitutes the desk scene for the camera
+# and the models. Together: the whole console, at a desk, in seconds.
+#
+#   python -m api --profile console_dummy
+# ============================================================================
+
+robot:
+  vendor: dummy
+
+  gripper:
+    vendor: "dummy"
+    tool_frame:
+      # Declared, because `from_robot_config` refuses an undeclared tool frame on any real path and a
+      # console profile that dodges that check would hide the very refusal an operator must meet.
+      # The numbers are the 2F-85's, i.e. a real gripper's, but on a dummy arm they move nothing.
+      source: "willy"
+      offset_mm: [0.0, 0.0, 132.0]
+      rotation_quat_xyzw: [-0.70710678, 0.0, 0.0, 0.70710678]
+
+  safety:
+    payload:
+      # A coherent pair rather than the shipped "not measured yet" markers, for the same reason as
+      # above: the console should exercise the happy path, not trip a guard that exists for real cells.
+      enforce: true
+      mass_kg: 1.5
+      cog_mm: [0.0, 0.0, 60.0]

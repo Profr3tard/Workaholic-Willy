@@ -6,7 +6,7 @@ from pathlib import Path
 
 import cv2 as cv
 
-from config.schema.camera import (
+from src.config.schema.camera import (
     CalibrationConfig,
     CameraSystemConfig,
     RGBDDeviceRigConfig,

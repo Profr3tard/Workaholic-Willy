@@ -21,7 +21,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 import cv2 as cv
 import numpy as np
 
-from config.schema.camera import RGBDDeviceRigConfig
+from src.config.schema.camera import RGBDDeviceRigConfig
 from src.camera.setup.image_taking.frames import RGBDFrame
 from src.camera.setup.quality import configure_camera_for_quality
 

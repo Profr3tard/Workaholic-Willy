@@ -1,0 +1,44 @@
+stereomatcher:
+  # --- Core SGBM parameters ---
+  minDisparity: 0
+  # numDisparities MUST be divisible by 16. Larger = supports closer
+  # objects at the cost of memory + compute. 320 covers typical desk
+  # distance scenes.
+  numDisparities: 320
+  # blockSize MUST be odd. 5 to 9 is the usable range for SGBM. Smaller =
+  # better edge preservation; larger = smoother in low-texture regions.
+  blockSize: 7
+  # P1/P2 control the smoothness penalty. null -> auto-computed as
+  # 8*channels*blockSize^2 and 32*channels*blockSize^2 (OpenCV default).
+  p1: null
+  p2: null
+  uniquenessRatio: 10
+  speckleWindowSize: 50
+  speckleRange: 1
+  disp12MaxDiff: 1
+
+  # --- Quality knobs ---
+  # "sgbm"      = StereoSGBM (default, best quality but slowest)
+  # "sgbm_3way" = MODE_SGBM_3WAY: ~2x faster with similar quality at 720p.
+  mode: sgbm_3way
+
+  # Subpixel disparity refinement. Costs essentially nothing and removes
+  # +/-0.5 px quantisation that translates to ~1 to 3 mm depth error at
+  # typical desk distances.
+  subpixel: true
+
+  # Realtime only: exponential smoothing on disparity to reduce flicker.
+  # 0.0 = disabled; 0.6 is a good starting point for the live overlay.
+  temporal_alpha: 0.0
+
+  # --- WLS post-filter (cv.ximgproc) ---
+  # Single biggest depth-quality improvement on textureless surfaces
+  # (walls, table tops, smooth objects). Requires opencv-contrib-python.
+  wls:
+    enabled: true
+    # Smoothness: higher fills holes more aggressively.
+    lambda: 8000.0
+    # Edge sensitivity: lower preserves edges more strictly.
+    sigma_color: 1.5
+    # Run a right-side matcher for left/right consistency confidence.
+    lr_check: true

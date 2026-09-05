@@ -3,7 +3,7 @@ import logging
 
 import cv2 as cv
 
-from config.schema.camera import WebcamPairRigConfig
+from src.config.schema.camera import WebcamPairRigConfig
 from src.camera.setup.quality import configure_camera_for_quality
 
 

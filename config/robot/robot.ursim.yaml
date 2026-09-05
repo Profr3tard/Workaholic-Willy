@@ -1,0 +1,58 @@
+# ============================================================================
+# URSim PROFILE   --profile ursim   (layers onto robot.yaml)
+#
+# Points the UR driver at a URSim container on localhost instead of a real controller, and declares
+# the two things `URRobotArm.connect()` fails closed on. Both refusals are deliberate and both were
+# exercised against URSim on 2026-08-18 before this profile existed:
+#
+#   * `safety.payload.enforce: true` with `mass_kg: 0.0`: connecting would push setPayload(0.0) and
+#     overwrite the controller's payload for a mounted tool.
+#   * `gripper.tool_frame.source: undeclared`: nobody has said where the grasp centre sits on the
+#     flange, so the driver cannot know whether a commanded pose means the TCP or the flange.
+#
+# THE NUMBERS BELOW ARE A SIMULATOR'S NUMBERS. They exist so the CODE PATH can be exercised, not
+# because anybody weighed a tool. The 2F-85 values are the ones the Isaac driver already carries
+# (132 mm stand-off, -90 deg about flange X); the payload is a plausible 2F-85-plus-coupling mass.
+# On a real cell every one of them is a bench measurement; see ToolFrameConfig's own docstring on
+# why the ROTATIONAL half is the dangerous half.
+#
+# URSim MUST BE IN REMOTE CONTROL. In Local mode the controller never runs an externally-sent
+# program, so RTDEControlInterface times out with a message that names nothing. `connect()` now
+# diagnoses that case explicitly (measured 2026-08-18). Enable it at
+# http://localhost:6080/vnc.html -> menu -> Settings -> System -> Remote Control -> Enable, then
+# switch the top-right selector from Local to Remote.
+#
+# Bring the container up with: scripts/ursim/ursim.sh up UR5   (or UR3)
+# ============================================================================
+
+robot:
+  vendor: ur
+  ur:
+    ip: "127.0.0.1"
+    # 0.0 = let ur_rtde pick the controller default. Frequency was REFUTED as a cause of the control
+    # timeout (500/250/125/50/10 Hz all failed identically at 6.1 s), so there is nothing to tune here.
+    rtde_frequency: 0.0
+    # NOT the base tree's "curobo": the URSim container has no GPU, so the cuRobo sidecar cannot
+    # start there and the fail-closed path would refuse every move. This profile exercises the
+    # DRIVER against a real controller, not the planner.
+    motion_planner: "ik"
+
+  gripper:
+    vendor: "none"          # the container has no end-effector; the I/O paths are exercised directly
+    tool_frame:
+      # `willy` = the CONTROLLER runs a bare flange and this driver composes the transform. That is
+      # what URSim actually is (no tool configured), so this is the honest source for it. Declaring
+      # `polyscope` here instead is the deliberate DISAGREEMENT test: the driver derives the
+      # controller's active frame and must refuse.
+      source: "willy"
+      offset_mm: [0.0, 0.0, 132.0]
+      rotation_quat_xyzw: [-0.70710678, 0.0, 0.0, 0.70710678]
+      verify_tolerance_mm: 10.0
+
+  safety:
+    payload:
+      enforce: true
+      mass_kg: 1.5
+      # NOT [0, 0, 0]: that is the "not measured yet" marker, and pushing it would tell the controller
+      # a 1.5 kg tool is a point mass at the flange face.
+      cog_mm: [0.0, 0.0, 60.0]

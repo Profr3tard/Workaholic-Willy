@@ -19,7 +19,7 @@ then always carries the attribute, holding `UNSET` when nobody typed the flag,
 so the CLI hands the same data to the same resolver as a Python caller.
 `SUPPRESS` removes the attribute, turning every unmigrated read into an
 `AttributeError`, and combined with `parents=` and `set_defaults` it
-reintroduces the shared Action mutation that `config/__main__.py` documents.
+reintroduces the shared Action mutation that `src/config/__main__.py` documents.
 
 `x is UNSET` is correct at run time and narrows nothing for a type checker,
 because `_Unset` is a plain class rather than a singleton mypy can reason about.

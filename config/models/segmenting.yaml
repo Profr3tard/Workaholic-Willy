@@ -1,0 +1,26 @@
+segmenter:
+  model_path: "src/models/segmentation/model"
+  model_id: "facebook/sam2-hiera-large"
+  local: True
+  optim:
+    torch_dtype: auto
+    attn_implementation: sdpa
+    channels_last: true
+    compile: false
+    compile_mode: reduce-overhead
+
+# Segmentation backend selection: "sam2" (realtime, box-prompted) | "oneformer" (research, higher-accuracy, GPU-heavy).
+segmenter_backend: "sam2"
+
+# OneFormer universal segmenter (instance masks). Active when segmenter_backend: "oneformer".
+oneformer:
+  model_path: ""
+  model_id: "shi-labs/oneformer_coco_swin_large"
+  local: false
+  task: "instance"
+  optim:
+    torch_dtype: auto
+    attn_implementation: "eager"
+    channels_last: true
+    compile: false
+    compile_mode: reduce-overhead
