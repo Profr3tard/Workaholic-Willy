@@ -1,0 +1,105 @@
+# Workaholic-Willy, tooling configuration for ruff, mypy, pytest and coverage.
+#
+# The project is a library plus CLI stack, run from the repository root as
+# python -m src.<package>. It is not packaged for pip install, so this file
+# carries tool configuration only and has no [build-system] or [project] table.
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["logs", "assets", "docs", ".venv"]
+
+[tool.ruff.lint]
+# The default safe set: pyflakes F plus the curated pycodestyle subset. The
+# broader families (I, UP, B, SIM) are a later ratchet.
+select = ["F", "E4", "E7", "E9"]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py re-exports each package's public surface, including the lazy
+# __getattr__ seams. An unused import there is the re-export, so autofix must
+# not strip it.
+"__init__.py" = ["F401", "F403"]
+
+# ---------------------------------------------------------------------------
+# Mypy
+#
+# Enforced across src, config, datagen and api with no per-module exemptions.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+namespace_packages = true
+explicit_package_bases = true
+# torch, cv2, open3d, sounddevice, transformers and ur_rtde ship no type stubs.
+ignore_missing_imports = true
+follow_imports = "normal"
+# A pragmatic baseline rather than --strict. Tightening it, starting with
+# disallow_untyped_defs, is a later ratchet.
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:cacheprovider"
+markers = [
+    "isaac: needs a real Isaac Sim install (Windows workstation only, skipped where isaacsim is not importable). See docs/isaac-ready.md.",
+    "inference: runs a real model against real weights on a real GPU. Skipped without CUDA or without the weights in the HuggingFace cache; fetch them with scripts/model_weights/fetch.py. Not part of the CI gate: multi gigabyte downloads and minutes of GPU time.",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src", "config"]
+branch = false
+omit = [
+  # Only code that CI on CPU cannot execute, so the number stays honest. There
+  # is no GPU, no robot, no physical camera and no display. cv2 is installed,
+  # so cv2 based computation is counted; only real capture and vendor SDKs are
+  # omitted.
+  #
+  # Vendor robot SDK boundaries (ur_rtde, EKI, robotiq_gripper):
+  "*/robot/drivers/kuka/*",
+  "*/robot/drivers/ur/connection.py",
+  "*/robot/drivers/ur/motion.py",
+  "*/robot/grippers/robotiq.py",
+  # Physical camera capture, which opens a device or a vendor RGB-D SDK:
+  "*/camera/setup/devices/*",
+  "*/camera/setup/image_taking/single.py",
+  "*/camera/setup/image_taking/webcam.py",
+  "*/camera/setup/image_taking/rgbd.py",
+  "*/camera/setup/quality.py",
+  # GUI visualization, which opens an Open3D or cv2 window:
+  "*/robot/grasping/visualization/*",
+  # torch model wrappers, which need torch and model weights:
+  "*/models/detection/*",
+  "*/models/segmentation/*",
+  "*/models/speech/speech_to_text.py",
+  "*/models/handdetection/*",
+  "*/models/_inference.py",
+  # A pure argparse dump tool with no in process caller. The replay and rl
+  # __main__ CLIs are counted, since the suite drives them via subprocess.
+  "*/config/__main__.py",
+  # Manual, Isaac free build script for the committed cuRobo gripper spheres.
+  "*/safety/planning/robot/build_gripper_spheres.py",
+  # The willy_sim Isaac runtime layer boots a SimulationApp or authors USD
+  # prims, which CI on CPU cannot execute; it is validated on the workstation
+  # instead. The CPU runnable core stays counted.
+  "*/willy_sim/run_*.py",
+  "*/willy_sim/inspect_wrist_cam.py",
+  "*/willy_sim/scene.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  '@(abc\.)?abstractmethod',
+]

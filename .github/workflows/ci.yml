@@ -15,8 +15,19 @@ permissions:
   contents: read
 
 jobs:
-  backend:
-    name: Backend — lint · type · test · soak
+  # One job, because there is one dependency set. Everything the project needs
+  # is in requirements.txt, so there is no install variant left to test
+  # separately.
+  #
+  # The runner has no GPU and installs the CUDA wheels anyway: they import
+  # without a device, so CI resolves the same set the workstation ships. What is
+  # checked here is that the pin resolves and imports.
+  #
+  # The claim that the library imports no web framework, and that nothing under
+  # src/ imports api/, is proven by AST scan in the test suite rather than by
+  # leaving fastapi uninstalled. It therefore holds under this job as well.
+  checks:
+    name: Lint, type, test, soak
     runs-on: ubuntu-latest
 
     steps:
@@ -28,71 +39,43 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install (CUDA runtime + dev tooling)
+      - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements/dev.txt
+          pip install -r requirements.txt
 
-      - name: Torch pin resolves and imports (no GPU on the runner)
+      - name: Torch pin resolves and imports
         run: python -c "import torch, torchvision; print('torch', torch.__version__, '| cuda available:', torch.cuda.is_available())"
 
-      - name: Ruff (lint)
-        run: ruff check backend datagen tests
+      - name: Ruff
+        run: ruff check src config api datagen tests scripts/examples
 
-      - name: Mypy (type check)
-        run: mypy backend datagen
+      - name: Mypy
+        run: mypy src config api datagen scripts/examples
 
-      - name: Pytest + coverage (fail-under 80%)
+      - name: Pytest and coverage
         run: |
           pytest tests \
-            --cov=backend \
+            --cov=src \
+            --cov=config \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=80
 
-      - name: U12 production soak gate
-        # Locks the U12 baseline against silent behavioral regressions.
-        run: python -m backend.src.robot.grasping.replay --soak-report
+      - name: Production soak gate
+        # Deterministic synthetic soak and 12 key KPI gate; exit 0 only if all
+        # pass. It checks telemetry and KPI consistency, not grasp quality.
+        run: python -m src.robot.grasping.replay --soak-report
 
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-cpu
+          name: coverage
           path: coverage.xml
 
-      - name: Security audit (pip-audit, informational)
-        # Non-blocking: surfaces advisories in pinned third-party deps (e.g. torch/opencv) that we cannot patch upstream, without red-gating dev.
+      - name: Security audit
+        # Informational. It surfaces advisories in pinned third party packages
+        # that cannot be patched here, without gating the build red.
         continue-on-error: true
         run: pip-audit --desc
-
-  # OPERATOR CONSOLE — `api/` package, in its own job.
-  console:
-    name: Operator console — lint · type · test
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-
-      - name: Install (dev tooling + the console's optional extra)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements/dev.txt -r requirements/api.txt
-
-      - name: Ruff (lint)
-        run: ruff check api
-
-      - name: Mypy (type check)
-        run: mypy api
-
-      - name: Pytest (console surface + the import guard)
-        # The guard runs in BOTH jobs by design: here it proves `api/` is the only
-        # tree importing the framework, and in the primary job it proves the
-        # library does not import it even when it is not installed at all.
-        run: pytest tests/test_api_console.py tests/test_no_web_framework_import.py
