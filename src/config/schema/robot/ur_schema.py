@@ -18,27 +18,26 @@ class URConfig(StrictModel):
     """
 
     #: Which UR this cell drives. Not cosmetic: the model keys the safety DH chain, the exact-mesh
-    #: collision bundle, and the cuRobo robot config. Before this existed, a real UR3e was planned and
-    #: collision-checked against UR5e link lengths (a2/a3 -425/-392.2 mm vs -243.55/-213.2) with nothing
-    #: anywhere saying so, on real hardware. Default "ur5e" keeps every existing cell unchanged.
+    #: collision bundle and the cuRobo robot config. A wrong key plans and collision-checks a real
+    #: arm against another model's link lengths (ur5e a2/a3 -425/-392.2 mm vs ur3e -243.55/-213.2)
+    #: with nothing anywhere saying so.
     model: str = Field(default="ur5e")
     ip: str = Field(default="192.168.1.100", min_length=1)
     #: RTDE update rate in Hz. ``0.0`` means "not configured: let the controller pick its default"
-    #: (500 Hz on the e-Series). That is OUR convention, not ur_rtde's: its sentinel for the same
-    #: thing is -1.0 and it reads 0.0 as literally zero hertz, which fails synchronisation. The UR
-    #: connection translates 0.0 -> -1.0 at the driver boundary; measured against URSim 5.26.0 on
-    #: 2026-08-18, where 0.0 failed in 6.1 s and both -1.0 and 500.0 connected.
+    #: (500 Hz on the e-Series), which is a local convention and not ur_rtde's: its sentinel for the
+    #: same thing is -1.0 and it reads 0.0 as literally zero hertz, which fails synchronisation.
+    #: Against URSim 5.26.0, 0.0 failed in 6.1 s while both -1.0 and 500.0 connected, so the UR
+    #: connection translates 0.0 -> -1.0 at the driver boundary.
     rtde_frequency: float = Field(default=0.0, ge=0.0)
-    # Approach-phase planner. "curobo" (the default) plans a global collision-free trajectory in the
+    # Approach-phase planner. "curobo" plans a global collision-free trajectory in the
     # process-isolated cuRobo planner (safety.planning) and executes it waypoint by waypoint over
     # ur_rtde; "ik" is the controller's calibrated IK and a moveJ/moveL straight line, which knows
     # nothing about the cell and will drive through anything in it.
     #
-    # The "curobo" path is fail-closed: with the planner unavailable the move returns
-    # CONTROLLER_REJECTED and with no collision-free plan it returns timeout. It never degrades to
-    # blind IK, so a cell with no cuRobo environment does not move at all rather than moving blindly.
-    # That is the point of the default; `python -m src.robot.safety.planning --doctor` is how
-    # you check before commissioning.
+    # The "curobo" path is fail-closed: the move returns CONTROLLER_REJECTED when the planner is
+    # unavailable and TIMEOUT when there is no collision-free plan. It never degrades to blind IK,
+    # so a cell with no cuRobo environment does not move at all. Check that environment with
+    # `python -m src.robot.safety.planning --doctor` before commissioning.
     motion_planner: Literal["ik", "curobo"] = "curobo"
 
     @field_validator("model")

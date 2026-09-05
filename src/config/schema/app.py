@@ -50,22 +50,21 @@ class ModelsConfig(StrictModel):
     objectdetector: ObjectDetectorConfig
     segmenter: SegmenterConfig
     stt: SpeechToTextConfig
-    #: Optional MediaPipe hand/gesture surface. Standalone: nothing in the grasp pipeline
-    #: reads these; they are read when a caller builds a detector via
-    #: `src.models.handdetection.factory`, or by that package's `python -m` CLI.
+    #: Optional MediaPipe hand/gesture surface. Standalone: nothing in the grasp pipeline reads
+    #: these. They are read when a caller builds a detector via `src.models.handdetection.factory`,
+    #: or by that package's `python -m` CLI.
     handdetect: HandDetectConfig = Field(default_factory=HandDetectConfig)
     gesturedetect: GestureDetectConfig = Field(default_factory=GestureDetectConfig)
-    # Perception-backend selection, the DIY way: two independently-settable keys with no cross-check,
-    # so every detector x segmenter combination builds, including ones where the prompt means
-    # something different to each half. Kept, because assembling a stack by hand is a legitimate thing
-    # to want; superseded for everyday use by `pipeline` below.
+    # Perception-backend selection by hand: two independently-settable keys with no cross-check, so
+    # every detector x segmenter combination builds, including ones where the prompt means something
+    # different to each half. `pipeline` below is the cross-checked way to choose a stack.
     detector: Literal["groundingdino", "rtdetr"] = "groundingdino"
     segmenter_backend: Literal["sam2", "oneformer"] = "sam2"
     rtdetr: ObjectDetectorConfig | None = None
     oneformer: OneFormerConfig | None = None
     #: A perception stack chosen in one line, with the combinations validated fail-closed. ``None``,
-    #: which is the default and what every existing cell has, means the two keys above are in force
-    #: and behaviour is byte-identical to a build without this block.
+    #: the default, means the two keys above are in force and behaviour is byte-identical to a build
+    #: without this block.
     pipeline: PipelineConfig | None = None
 
 

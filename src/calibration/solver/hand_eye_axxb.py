@@ -2,10 +2,10 @@
 AX = XB hand-eye calibration solver.
 
 Pure-numpy implementation of the closed-form rotation-first approach based on
-the Kronecker-product / SVD formulation (Park & Martin 1994, adapted).
+the Kronecker-product and SVD formulation (Park & Martin 1994, adapted).
 
-The solver is **convention-agnostic**: it only performs the linear algebra.
-The caller must supply the correct ``A`` and ``B`` matrices for the chosen
+The solver is convention-agnostic: it performs only the linear algebra. The
+caller must supply the correct ``A`` and ``B`` matrices for the chosen
 calibration mode:
 
 Eye-to-hand (fixed camera, marker on gripper)
@@ -22,27 +22,23 @@ Eye-in-hand (camera on gripper, fixed marker)
     B_i  = T_cam_to_marker_{i+1} @ inv(T_cam_to_marker_i)   (relative marker motion)
     X    = T_cam_to_tool                                      (solve target)
 
-    This is exactly what :class:`EyeInHandCalibrator` builds in
+    This is what :class:`EyeInHandCalibrator` builds in
     ``eye_hand/eye_in_hand/calibrator.py``; only ``B`` is a plain output of
     :meth:`relative_motions`, so ``A`` must be built manually.
 
     .. warning::
-       Swapping the two sides gives the exact inverse, not an error. Put the
-       marker on the ``A`` side and the gripper on the ``B`` side with both index
-       orders reversed, and you have a pair where ``A' = inv(B)`` and
-       ``B' = inv(A)``, so ``A' X' = X' B'`` is solved by ``X' = inv(X)``. A solve
-       hand-rolled from that pair returns ``T_tool_to_cam`` while every label says
-       ``T_cam_to_tool``, and nothing raises. On the shipped sim geometry that
-       inversion is roughly 290 mm out.
-
-A convenience static method :meth:`HandEyeAXXB.relative_motions` is provided
-to compute consecutive relative transforms from a sequence of absolute poses.
+       Swapping the two sides gives the exact inverse, not an error. Marker on
+       the ``A`` side and gripper on the ``B`` side with both index orders
+       reversed is a pair where ``A' = inv(B)`` and ``B' = inv(A)``, solved by
+       ``X' = inv(X)``: the result is ``T_tool_to_cam`` under a ``T_cam_to_tool``
+       label, and nothing raises. On the shipped sim geometry that inversion is
+       roughly 290 mm out.
 
 Reference
 ---------
 Park, F. C. & Martin, B. J. (1994).
 "Robot sensor calibration: solving AX = XB on the Euclidean group."
-Ieee Trans. Robotics and Automation, 10(5):717-721.
+IEEE Trans. Robotics and Automation, 10(5):717-721.
 """
 
 from __future__ import annotations
@@ -137,8 +133,8 @@ def _project_to_SO3(M: np.ndarray) -> np.ndarray:
 class HandEyeAXXB:
     """Closed-form AX = XB hand-eye calibration solver.
 
-    Solves for the unknown rigid transform **X** (4 x 4) given *N* pairs of
-    relative transforms (**A_i**, **B_i**) that satisfy:
+    Solves for the unknown rigid transform X (4 x 4) given N pairs of
+    relative transforms (A_i, B_i) that satisfy:
 
         A_i  X  ~=  X  B_i      for i = 1 ... N
 
@@ -274,7 +270,7 @@ class HandEyeAXXB:
             =>  (kron(I, R_A) - kron(R_B^T, I)) vec(R_X) = 0
 
         Stack all pairs into K (9N x 9), find the null-space vector via SVD
-        (last right singular vector), reshape with **Fortran ('F') order** to
+        (last right singular vector), reshape with Fortran ('F') order to
         match the column-major convention, then project to SO(3).
         """
         n = len(A_mats)
@@ -290,7 +286,6 @@ class HandEyeAXXB:
 
         _, _, Vt = np.linalg.svd(K)
         v = Vt[-1]  # last right singular vector -> null space = vec(R_X)
-        # Reshape using Fortran ('F') order to match column-major convention.
         R_approx = v.reshape(3, 3, order="F")
         return _project_to_SO3(R_approx)
 

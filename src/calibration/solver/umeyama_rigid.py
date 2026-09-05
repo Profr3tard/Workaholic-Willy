@@ -6,7 +6,7 @@ Pure-numpy; no OpenCV dependency. Finds the rotation ``R`` and translation
 
 The algorithm is the closed-form SVD solution described in Umeyama (1991)
 "Least-Squares Estimation of Transformation Parameters Between Two Point
-Patterns", ieee tpami 13(4):376-380.
+Patterns", IEEE TPAMI 13(4):376-380.
 """
 
 from __future__ import annotations
@@ -100,8 +100,8 @@ class UmeyamaRigid:
         residuals = dst - (src @ R.T + t)
         rmse = float(np.sqrt(np.mean(np.sum(residuals ** 2, axis=1))))
 
-        # The residual is the only evidence that the two point sets really correspond --
-        # a registration on mismatched orderings still returns a perfectly valid R, t.
+        # The residual is the only evidence that the two point sets really correspond:
+        # a registration on mismatched orderings still returns a valid R, t.
         logger.info(
             "Registered %d point pairs: rmse=%.4f, |t|=%.4f (input units).",
             src.shape[0],

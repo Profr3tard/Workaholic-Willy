@@ -6,8 +6,7 @@ Exit codes:
 * 2: bad CLI arguments
 
 A query that finds nothing still exits 0: ``explain`` prints "not a known key" with suggestions and
-``where`` prints "no config key matches". Asking about a key that turns out not to exist is a successful
-answer to a legitimate question, not a failure of the tool.
+``where`` prints "no config key matches".
 
 Examples::
 
@@ -39,9 +38,8 @@ def _emit(text: str) -> None:
     """Print without ever dying on the console's encoding.
 
     The config's own comments contain box-drawing characters and typographic dashes, and a stock
-    Windows console is cp1252, where printing one raises UnicodeEncodeError. Without this, the
-    tool whose entire job is to explain a confusing config would die on the confusing config.
-    Unrepresentable characters are replaced; losing a dash beats losing the answer.
+    Windows console is cp1252, where printing one raises UnicodeEncodeError. Unrepresentable
+    characters are replaced instead: losing a dash beats losing the answer.
     """
     encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
     try:
@@ -60,15 +58,14 @@ def _shared_options() -> argparse.ArgumentParser:
 
     Two argparse facts collide here, and the collision is silent:
 
-    1. ``default=SUPPRESS`` is what makes ``config --profile sim explain KEY`` work at all. With a normal
-       default, the subparser's copy of the flag writes that default into the namespace *after* the
-       top-level parser already stored the real value, so a flag given before the subcommand was
-       discarded and the tool answered about the base tree.
-    2. :meth:`ArgumentParser.set_defaults` **mutates the Action objects it matches**. ``parents=`` shares
-       Action instances rather than copying them, so one shared parent parser plus ``set_defaults`` on
-       the top level rewrote the subparser's ``SUPPRESS`` back to ``None``, reintroducing (1)
-       through the very call meant to fix it. Measured: ``--profile sim explain KEY`` reported "no
-       YAML sets this" for a key the sim layer plainly sets.
+    1. ``default=SUPPRESS`` is what makes ``config --profile sim explain KEY`` work at all. With a
+       normal default, the subparser's copy of the flag writes that default into the namespace after
+       the top-level parser stored the real value, so a flag given before the subcommand is discarded
+       and the tool answers about the base tree.
+    2. :meth:`ArgumentParser.set_defaults` mutates the Action objects it matches, and ``parents=``
+       shares Action instances rather than copying them. With one shared parent parser, the top
+       level's ``set_defaults`` therefore rewrites the subparser's ``SUPPRESS`` back to ``None``,
+       which reintroduces (1).
 
     Handing every parser its own instance keeps ``set_defaults`` local to the top-level parser.
     """
@@ -77,11 +74,9 @@ def _shared_options() -> argparse.ArgumentParser:
         "--data", metavar="DIR", default=argparse.SUPPRESS,
         help="path to a custom data/ directory (default: config)",
     )
-    # `--print` stays on this shared parent deliberately, even though it applies only to the
-    # default command. Removing it would make `config --print explain KEY` fail with argparse's
-    # generic "unrecognized arguments", which does not say why; keeping it lets `main` refuse with a
-    # sentence naming the command that does accept it. Same reason the flag is on both sides of the
-    # subcommand in the first place: the parse has to succeed before anything can explain itself.
+    # `--print` sits on this shared parent although only the default command reads it. Without it,
+    # `config --print explain KEY` fails with argparse's generic "unrecognized arguments"; with it,
+    # the parse succeeds and `main` can refuse by naming the command that does accept the flag.
     parser.add_argument(
         "--print", action="store_true", default=argparse.SUPPRESS,
         help="dump the validated AppConfig as JSON",
@@ -95,8 +90,7 @@ def _shared_options() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     # Shared options live on a parent parser so they work on both sides of the subcommand:
-    # `config --profile X explain KEY` and `config explain KEY --profile X` both read naturally, and a
-    # tool nobody can invoke correctly is not an ergonomics improvement.
+    # `config --profile X explain KEY` and `config explain KEY --profile X` both parse.
     parser = argparse.ArgumentParser(
         prog="python -m src.config", parents=[_shared_options()],
         description="Validate the YAML configuration tree, or ask it where a value came from.",
@@ -110,22 +104,22 @@ def main(argv: list[str] | None = None) -> int:
     explain_cmd.add_argument("key", help="dotted key, e.g. robot.sim.robot_model")
     where_cmd = sub.add_parser(
         "where", parents=[_shared_options()],
-        help="find config keys by substring: searches the SCHEMA, so it finds unwritten ones",
+        help="find config keys by substring: searches the schema, so it finds unwritten ones",
     )
     where_cmd.add_argument("needle", help="substring to look for, e.g. gripper")
     where_cmd.add_argument(
         "--tier", default=None,
-        help="show only this tier (safety | site | tuned | advanced), or 'all'. A tier is a DISPLAY "
+        help="show only this tier (safety | site | tuned | advanced), or 'all'. A tier is a display "
              "filter: every field stays settable whether it is shown or not.",
     )
     where_cmd.add_argument(
         "--limit", type=int, default=40, metavar="N",
-        help="max keys listed PER TIER (default 40). `where grasping` matches 188 keys, so the default "
+        help="max keys listed per tier (default 40). `where grasping` matches 188 keys, so the default "
              "elides most of them; raise it when you are hunting rather than browsing.",
     )
     dec_cmd = sub.add_parser(
         "decisions", parents=[_shared_options()],
-        help="only the values that DIFFER from their schema default: what this cell actually decides",
+        help="only the values that differ from their schema default: what this cell actually decides",
     )
     dec_cmd.add_argument(
         "--section", default=None, metavar="PREFIX",
@@ -137,24 +131,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    # **a flag that cannot apply is rejected, not ignored.** This file already states the rule,
-    # at the `where` branch below: "a filter that is accepted and ignored is worse than no filter: it
-    # answers a question you did not ask." It was stated about `--tier`/`--limit` and two more flags
-    # were breaking it, both measured on 2026-09-04:
-    #
-    #   `explain KEY --print`  printed the explanation, no JSON, exit 0. `--print` rides the shared
-    #                          parent parser onto all three subcommands and is only read after every
-    #                          one of them has returned, so it is unreachable for each.
-    #   `where N --data D`     byte-identical to `where N`, exit 0, and `where N --profile nosuch`
-    #                          exits 0 where every other branch exits 1 on that chain. `find_keys`
-    #                          takes no root at all: it searches the schema compiled into this
-    #                          checkout, so pointing the tool at a customer's tree silently answered
-    #                          about ours.
-    #
-    # Rejected rather than made to work, because neither can work. `--print` dumps the validated
-    # tree, which is the default command's answer and not an explanation's; `where` has no tree to
-    # point anywhere. Exit 2 is argparse's own "bad arguments", already the documented meaning at the
-    # top of this file, and the message names the command that does accept the flag.
+    # A flag that cannot apply is rejected, not accepted and ignored, which would answer a question
+    # nobody asked. Both flags below ride the shared parent parser onto the subcommands, where
+    # nothing reads them: `--print` dumps the validated tree and is only read after every subcommand
+    # has returned, and `find_keys` behind `where` takes no root at all, so `--data` / `--profile`
+    # cannot change an answer that comes from the schema compiled into this checkout. Exit 2 is
+    # argparse's own "bad arguments", the meaning documented at the top of this file, and each
+    # message names the command that does accept the flag.
     if args.command is not None and args.print:
         parser.error(
             f"--print dumps the whole validated config, which is what the default command does; "
@@ -164,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         for flag, value in (("--data", args.data), ("--profile", args.profile)):
             if value is not None:
                 parser.error(
-                    f"'where' searches the SCHEMA compiled into this checkout, not a YAML tree, so "
+                    f"'where' searches the schema compiled into this checkout, not a YAML tree, so "
                     f"{flag} cannot change its answer. Drop {flag}, or use 'explain' / 'decisions', "
                     f"which do read the tree."
                 )
@@ -172,23 +155,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "where":  # schema-only: needs no tree and cannot fail on a broken one
         from .explain import find_keys
 
-        # `--tier` and `--limit` were parsed and then dropped on the floor here, so the flag the help
-        # text advertised did nothing and every listing silently stopped at 40 keys per tier. A filter
-        # that is accepted and ignored is worse than no filter: it answers a question you did not ask.
         _emit(find_keys(args.needle, limit=args.limit, tier=args.tier))
         return 0
 
-    # One value carrying root, chain and layers, and this function used to carry three copies of
-    # two of them: `root` and `layers` were rebuilt from the same expression at the `decisions` and
-    # `explain` branches, independently, four lines apart. `ConfigTree` derives all three once and
-    # the ask methods take only the key, so the value and its provenance cannot come from different
-    # places. They already had: `explain_in` was measured printing `robot.sim.enabled = True` above
-    # the robot.yaml line that sets it to `false`.
-    #
-    # And the profile is an argument now, not an environment variable set and put back. The old
-    # dance defeated the `source` argument that `_validated_chain` carries for exactly one purpose:
-    # naming the thing the operator typed. `--profile nosuch` blamed `WILLY_PROFILE` for a value
-    # nobody had exported.
+    # `ConfigTree` derives root, chain and layers once and its ask methods take only the key, so a
+    # value and its provenance cannot be built from two different expressions. The profile travels as
+    # an argument rather than through `WILLY_PROFILE`, so the `source` that `_validated_chain` carries
+    # names what the operator typed instead of blaming an environment variable nobody exported.
     loaded = ConfigTree.from_directory(
         root=args.data if args.data is not None else UNSET,
         profile=args.profile if args.profile is not None else UNSET,

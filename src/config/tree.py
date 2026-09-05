@@ -1,37 +1,25 @@
 """A config tree as one value: the directory, the chain, and the layers that chain splits into.
 
-**Three facts that must agree, passed around separately, and they do not agree.** `explain_in`,
-`decisions`, `index_chains` and `set_keys` each take `root` and `layers` (and `set_keys` also a
-`profile`) as independent arguments beside the already-loaded config. Nothing binds them, so a caller
-can hand over a config loaded one way and a provenance walk described another way, and get a confident
-answer that is wrong. `edit.py:392-394` names the hazard in prose and then does the thing it names:
+`explain_in`, `decisions`, `index_chains` and `set_keys` each take `root` and `layers` (and
+`set_keys` also a `profile`) as independent arguments beside the already-loaded config. Nothing binds
+those arguments to one another, so a config loaded under one chain can be walked for provenance under
+another, and the answer that comes back is confidently wrong with no error raised:
 
-    ``profile`` is the chain string the reload runs under; ``layers`` is the same chain split, used
-    to pick the target files. Both are passed in because the caller already holds both, and
-    re-deriving one from the other here would be a second place for them to disagree.
+  * on the read path the value comes from the config and the origin from `layers`, so the tool whose
+    whole purpose is "which layer set this" can report `robot.sim.enabled = True` above
+    `robot/robot.yaml:31`, a line that sets `false`.
+  * on the write path `set_keys` picks the target file from `layers[-1]` and validates under
+    `profile`, so `layers=("ur3e",)` with `profile=None` writes `mass_kg: 3.25` into
+    `robot.ur3e.yaml` beneath the `max_mass_kg: 3.0` that forbids it, validates the base tree
+    instead, reports `applied=True`, and leaves the tree unloadable under the layer it wrote.
 
-Passing both because the caller holds both is what lets them disagree. Deriving one from the other is
-what stops it.
+`set_keys` in `edit.py` documents those two shapes of one chain and still takes both, so the
+disagreement is constructible there.
 
-**Measured, twice, both on code this convention shipped.**
-
-    explain_in(load_config(profile="sim"), "robot.sim.enabled", <root>, ())
-      ->  robot.sim.enabled = True
-          set in    robot\\robot.yaml:31        <- that line sets `false`
-
-The value came from the config, the provenance from the empty `layers`, and the tool whose entire
-purpose is "which layer set this" pointed at a line setting the opposite value, with no error. The
-second is worse and lives on the write path: `set_key(..., layers=("ur3e",), profile=None)` picks the
-target file from `layers[-1]` and validates under `profile`, so it wrote `mass_kg: 3.25` into
-`robot.ur3e.yaml` directly beneath a `max_mass_kg: 3.0` that forbids it, reloaded the BASE tree
-instead, reported `applied=True`, and left the tree unloadable under its own layer, against a module
-docstring promising exactly that cannot happen.
-
-**So the ask methods hang off the tree and take only a key.** A `ConfigTree` that were merely a
-carrier would move the problem rather than fix it, and there is proof of that in the repository
-already: `api/cell.py`'s `Console` is a root+profile+layers carrier today, and
-`api/routers/config.py:56` and `:138` still unpack it into four and five separate arguments by hand.
-It works by convention, and convention is what these two measurements were.
+So the ask methods hang off the tree and take only a key, and `layers` is derived from `profile`
+rather than passed beside it. Carrying the three facts in one object is not on its own enough:
+`api/cell.py`'s `Console` is a root+profile+layers carrier, and `api/routers/config.py:56` and `:138`
+unpack it into four and five separate arguments by hand.
 """
 
 from __future__ import annotations
@@ -52,13 +40,10 @@ __all__ = ["ConfigTree", "LoadedTree", "default_data_dir"]
 def default_data_dir() -> Path:
     """The directory `load_config()` reads when nobody names one.
 
-    There was no public way to ask this, and four places rebuilt it independently:
-    `loader.py:84` (`_DEFAULT_DATA_DIR`, private), `src/config/__main__.py` twice in one function,
-    `api/cell.py:45`, and `willy_sim/config.py:53` from a different file's `parents[2]`. Since
-    `explain`, `decisions` and `set_keys` all take `root` as a required argument, and a wrong root
-    produces a silently wrong answer rather than an error, "there is no public accessor" was not a
-    tidiness problem. It was the reason every caller hand-built the one argument that cannot be
-    checked.
+    The public accessor for `loader.py:84`'s private `_DEFAULT_DATA_DIR`, a `parents[2]` walk that
+    no other file can repeat. `explain`, `decisions` and `set_keys` all take `root` as a required
+    argument, and a wrong root produces a silently wrong answer rather than an error, so a caller
+    builds it here rather than deriving its own.
     """
     from .loader import _DEFAULT_DATA_DIR  # noqa: PLC0415
 
@@ -86,8 +71,10 @@ class LoadedTree:
 
     @property
     def exit_code(self) -> int:
-        """on the report. The CLI's `except ConfigError: return 1` is the only source of a 1 in
-        that whole entry point, and every other caller had to re-derive it.
+        """The process exit code: 0 when the tree loaded, 1 when it did not.
+
+        The same 1 the CLI's `except ConfigError: return 1` returns, and the only source of a 1 in
+        that entry point.
         """
         return 0 if self.ok else 1
 
@@ -95,9 +82,8 @@ class LoadedTree:
     def chain(self) -> str:
         """The layers as a person reads them, or ``(no profile)``.
 
-        The chain that was actually loaded, not the one that was asked for. The CLI printed
-        ``(no profile)`` while `WILLY_PROFILE=sim` was in force and its overlays had already been
-        applied, so the banner denied the layering it had just performed.
+        The chain that was actually loaded, including whatever `WILLY_PROFILE` contributed, not the
+        one that was asked for.
         """
         return " -> ".join(self.tree.layers) or "(no profile)"
 
@@ -106,9 +92,9 @@ class LoadedTree:
     def explain(self, key: str) -> "KeyExplanation":
         """Everything known about one key: its value here, and which file decided it.
 
-        The value and the provenance come from one place now. `explain_in` reads the value out of
-        a config and walks `root` + `layers` for the origin; handing it three arguments that were not
-        derived together is how it came to print a value above a line that sets the opposite.
+        `explain_in` reads the value out of a config and walks `root` + `layers` for the origin.
+        All three come from this tree, so the value and the provenance cannot describe different
+        loads.
         """
         from .explain import explain_in  # noqa: PLC0415
 
@@ -166,9 +152,8 @@ class ConfigTree:
         print(loaded.render())
         print(loaded.explain("robot.sim.enabled").render())
 
-    `layers` is derived from `profile`, never passed. That is the whole point of the class: the
-    two are the same fact in two shapes, and every measured defect in this area came from letting a
-    caller supply both.
+    `layers` is derived from `profile`, never passed. The two are the same fact in two shapes, and a
+    caller allowed to supply both is a caller allowed to make them disagree.
     """
 
     root: Path
@@ -177,7 +162,7 @@ class ConfigTree:
     profile: str | None
     layers: tuple[str, ...] = ()
     #: The root as the caller named it, or `None` when they named none. Only for `render()`, which
-    #: has always echoed the operator's own words rather than the resolved path.
+    #: echoes the operator's own words rather than the resolved path.
     named_root: str | None = field(default=None, compare=False)
 
     @classmethod
@@ -209,10 +194,9 @@ class ConfigTree:
     def load(self) -> LoadedTree:
         """Read and validate. A tree that does not load is a verdict, not an exception.
 
-        One call, with the profile as an argument. The CLI did this by setting `WILLY_PROFILE`,
-        loading, then restoring it, which defeated the `source` argument `_validated_chain` carries
-        for exactly one purpose: naming the thing the operator typed. `--profile nosuch` therefore
-        blamed `WILLY_PROFILE` for a value nobody put there.
+        The profile travels as an argument rather than through the environment, which is what keeps
+        the `source` that `_validated_chain` carries pointing at the thing the operator typed: a bad
+        `--profile` is reported against the flag and not against `WILLY_PROFILE`.
         """
         from .loader import ConfigError, load_config  # noqa: PLC0415
 
@@ -225,21 +209,15 @@ class ConfigTree:
     def write(self, items: "Mapping[str, Any]", *, connected: bool) -> "WriteResult":
         """Write measured values into this tree as one transaction: all land, or none do.
 
-        **`connected` has no default, and that is the entire reason this method exists.**
-        `set_keys` declares `connected: bool = False`, the permissive value, and the only production
-        caller in the repository never passed it: `api/routers/config.py:138` wrote
-        `set_keys(values, root=..., layers=..., profile=...)` while `CellSession.connected` sat one
-        attribute away. So the `requires_disconnected` guard on the two controller-address keys
-        (`robot.ur.ip`, `robot.kuka.controller_ip`) could not fire, and an operator could change
-        Which machine receives every motion through the browser while the cell was live, with the
-        guard skipped and nothing in the result saying it had been.
+        `connected` has no default. `set_keys` declares `connected: bool = False`, the permissive
+        value, and a caller that leaves it out (`api/routers/config.py:138`, with
+        `CellSession.connected` one attribute away) skips the `requires_disconnected` guard on the
+        two controller-address keys (`robot.ur.ip`, `robot.kuka.controller_ip`): the machine that
+        receives every motion is repointable from the browser while the cell is live, with nothing
+        in the result saying the guard did not run.
 
-        That is the same shape as a gate that took `baseline_pick_rate` as a required keyword and got
-        `None`: the check ran, and it ran over nothing. A default that means "no guard" is a guard
-        nobody has to switch off.
-
-        And `root`, `layers` and `profile` come from the tree, so the write cannot land in a file
-        that a different chain then validates. `set_keys` raises on that disagreement now; here it is
+        `root`, `layers` and `profile` come from the tree, so the write cannot land in a file that a
+        different chain then validates. `set_keys` raises on that disagreement; here it is
         unconstructible.
         """
         from .edit import set_keys  # noqa: PLC0415

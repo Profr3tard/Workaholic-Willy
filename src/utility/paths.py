@@ -40,10 +40,10 @@ __all__ = [
 def _log() -> Logger:
     """Logger for this module, built on first use. See :func:`utility_logger`.
 
-    Called only where a line is actually going to be emitted. ``create_logger``
+    Call it only where a line is actually going to be emitted. ``create_logger``
     opens the rotating file eagerly, so touching this accessor on a hot happy
-    path, and ``project_root`` runs on every lookup here, would leave a
-    permanently empty ``paths.log`` behind even at debug.
+    path, and ``project_root`` runs on every lookup here, leaves a permanently
+    empty ``paths.log`` behind even at debug.
     """
     return utility_logger("UtilityPaths", PATHS_LOG_FILE)
 
@@ -80,9 +80,9 @@ def project_root() -> Path:
     # utility/paths.py -> utility -> src -> <root>
     #
     # Nothing matched, so this is a guess from the depth of this file alone. It
-    # is right in a normal checkout and wrong the moment the package is vendored
-    # or installed elsewhere, and every caller that builds a path off the root
-    # then inherits the mistake silently. Say it once, here, with the fix.
+    # is right in a normal checkout and wrong once the package is vendored or
+    # installed elsewhere, and every caller that builds a path off the root then
+    # inherits the mistake silently, which is why the warning carries the fix.
     fallback = here.parents[2]
     _log().warning(
         "project_root: no ancestor of %s holds src/ plus requirements.txt or "
@@ -148,10 +148,10 @@ def rotate_files(
             failed += 1
             continue
 
-    # One line per call rather than per file. This is the only helper in the
-    # package that destroys data, so it says so at info. It also runs on every
-    # debug_dir() call, and the answerable question afterwards is how many went
-    # from which bucket, never which artefact happened to be oldest.
+    # One line per call rather than per file, at info because this is the only
+    # helper in the package that destroys data. It runs on every debug_dir()
+    # call, and the answerable question afterwards is how many went from which
+    # bucket, never which artefact happened to be oldest.
     if removed:
         _log().info(
             "rotate_files: removed %d of %d matching file(s) from %s (cap %d)",

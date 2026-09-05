@@ -85,21 +85,20 @@ def atomic_write_bytes(
 ) -> None:
     """Write binary content to ``path`` atomically, by handing ``write`` an open file.
 
-    The text sibling above takes a finished string. A torch checkpoint is
-    produced by a writer, ``torch.save(payload, handle)``, and can be tens of
-    megabytes, so this takes the writer rather than materialising the bytes
-    twice.
+    ``atomic_write_text`` takes a finished string; this takes a writer, since a
+    torch checkpoint is produced by one, ``torch.save(payload, handle)``, and
+    can be tens of megabytes.
 
-    The ``fsync`` before the rename is what makes the guarantee survive a power
-    loss rather than only a crashed process. ``os.replace`` publishes the
-    directory entry, and without the flush that entry can be durable while the
-    contents are not.
+    ``fsync`` before the rename is what makes the guarantee survive a power loss
+    rather than only a crashed process: ``os.replace`` publishes the directory
+    entry, and without the flush that entry can be durable while the contents
+    are not.
 
-    On Windows ``os.replace`` raises ``PermissionError`` (winerror 5) if any
-    process holds the destination open. A caller for whom a failed write must
-    not end the work, a training checkpoint being exactly that, has to catch
-    ``OSError`` itself. This helper does not swallow it, because for an artifact
-    a silent non-write is the worse outcome.
+    On Windows ``os.replace`` raises ``PermissionError``, winerror 5, if any
+    process holds the destination open, and this helper does not swallow it: for
+    an artifact a silent non-write is the worse outcome. A caller for whom a
+    failed write must not end the work, a training checkpoint being one, has to
+    catch ``OSError`` itself.
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

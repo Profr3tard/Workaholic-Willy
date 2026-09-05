@@ -27,9 +27,8 @@ RL_MODE_RL_SHADOW: str = "rl_shadow"
 RL_MODE_RL_ACTIVE: str = "rl_active"
 RL_MODE_RL_EXPERIMENTAL: str = "rl_experimental"
 
-#: All five product modes accepted by the schema. The runtime supports only
-#: the deterministic subset; see
-#: :data:`src.robot.grasping.rl.RL_SUPPORTED_MODES_DETERMINISTIC`.
+#: All five product modes accepted by the schema. The subset the runtime
+#: supports is :data:`src.robot.grasping.rl.RL_SUPPORTED_MODES_DETERMINISTIC`.
 RL_MODE_VALUES: tuple[str, ...] = (
     RL_MODE_GEOMETRY_ONLY,
     RL_MODE_HYBRID_ML,
@@ -69,8 +68,8 @@ class RobotRLConfig(StrictModel):
     To enable an RL-active mode the operator must set ``mode`` to one of
     ``rl_shadow`` / ``rl_active`` / ``rl_experimental``, provide both
     ``policy_id`` and ``artifact_path``, and (for ``rl_experimental``) set
-    ``experimental.enabled``. The runtime still rejects every RL-active mode
-    with a typed :class:`RLModeNotImplementedError`; the schema gate is
+    ``experimental.enabled``. The runtime rejects every RL-active mode with a
+    typed :class:`RLModeNotImplementedError`; the schema gate is
     defence-in-depth for when the producers land.
     """
 
@@ -83,9 +82,9 @@ class RobotRLConfig(StrictModel):
     ] = Field(default="hybrid_ml")
     policy_id: str | None = Field(default=None, min_length=1)
     artifact_path: str | None = Field(default=None, min_length=1)
-    # Optional per-policy artifact overrides for the shadow router (else committed baselines are used).
-    # StrictModel forbids extras, so the shadow.py `getattr(rl_cfg, "<x>_artifact_path", None)` overrides
-    # were unreachable without these fields.
+    # Optional per-policy artifact overrides for the shadow router; without one the committed baseline
+    # is used. StrictModel forbids extras, so shadow.py's `getattr(rl_cfg, "<x>_artifact_path", None)`
+    # lookups resolve only for the fields declared here.
     ranking_artifact_path: str | None = Field(default=None, min_length=1)
     sequencing_artifact_path: str | None = Field(default=None, min_length=1)
     perception_artifact_path: str | None = Field(default=None, min_length=1)
@@ -95,15 +94,14 @@ class RobotRLConfig(StrictModel):
     )
     # Learner runtime tier. ``stdlib`` (default) is the pure-stdlib shipping path:
     # byte-deterministic, portable, the safety-auditable hot path. ``numpy`` and
-    # ``torch`` are OPT-IN, lazily-imported heavier tiers for exploring what stronger
-    # models achieve; they never become the ship default implicitly and stay fully
-    # subordinate to the safety action mask. Heavy-tier artifacts are experimental-stamped
-    # and never overwrite the committed stdlib goldens.
+    # ``torch`` are opt-in, lazily imported heavier tiers; they are never the implicit
+    # ship default and stay subordinate to the safety action mask. Heavy-tier artifacts
+    # are experimental-stamped and never overwrite the committed stdlib goldens.
     runtime_tier: Literal["stdlib", "numpy", "torch"] = Field(default="stdlib")
-    # Tier-0 online learning (shadow-only, zero grasp influence). When True the shadow
+    # Tier-0 online learning, shadow-only with zero grasp influence. When true the shadow
     # router accumulates online updates into a mutable side-state and stamps the artifact
-    # root ``online_state`` (still-shadow); the promotion gate keeps refusing online-mutated
-    # artifacts. Requires an RL mode (defence-in-depth against a silent no-op).
+    # root ``online_state``, still shadow, and the promotion gate refuses online-mutated
+    # artifacts. Requires an RL mode, so setting it alone cannot be a silent no-op.
     online_update_enabled: bool = Field(default=False)
 
     @model_validator(mode="after")

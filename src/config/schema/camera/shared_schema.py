@@ -50,12 +50,11 @@ class RGBDCalibPaths(StrictModel):
     Only ``base_dir`` is required; ``intrinsics_file`` is derived from it and can be overridden.
 
     There are deliberately no ``color_images_dir`` / ``depth_images_dir`` fields, unlike the stereo
-    rig above where those are real. The stereo capture pipeline reads through
-    ``left/right_images_glob`` and this class has no glob, so nothing could read such folders
-    even if something wrote them. The RGB-D artefact story does not use folders at all:
-    ``export_intrinsics_on_open`` writes ``intrinsics_file`` and ``load_intrinsics`` reads it back,
-    while ``StereoCapturePipeline`` explicitly skips every RGB-D rig. If in-repo RGB-D intrinsics
-    capture is ever built, add the dir and the glob together: one without the other is dead.
+    rig above where those are real. Nothing would read them: ``StereoCapturePipeline`` skips every
+    RGB-D rig, and it reads through ``left/right_images_glob``, which this class does not have. The
+    RGB-D artefact story uses no folders at all: ``export_intrinsics_on_open`` writes
+    ``intrinsics_file`` and ``load_intrinsics`` reads it back. If in-repo RGB-D intrinsics capture is
+    ever built, add the dir and the glob together: one without the other is dead.
     """
 
     base_dir: str
@@ -92,9 +91,9 @@ class CalibrationConfig(StrictModel):
 
     These describe the stereo board only. The standalone hand-eye marker is a separate physical
     artefact configured under ``camera.hand_eye`` and may use a different dictionary; under
-    ``WILLY_PROFILE=sim`` it demonstrably does (stereo ``DICT_5X5_100`` / 50 mm vs hand-eye
-    ``DICT_4X4_50`` / 48 mm). There is deliberately no cross-block validator tying them: OpenCV allows
-    different dictionaries, and the board and the single marker are different objects.
+    ``WILLY_PROFILE=sim`` it does (stereo ``DICT_5X5_100`` / 50 mm vs hand-eye ``DICT_4X4_50`` /
+    48 mm). No cross-block validator ties them: OpenCV allows different dictionaries, and the board
+    and the single marker are different objects.
     """
 
     charuco_squares_x: int = Field(gt=1)

@@ -1,16 +1,14 @@
 """Read a stored camera intrinsics file back into ``(K, dist)``.
 
-The RealSense streamer writes ``intrinsics.json`` (``_export_intrinsics``) but, until now, nothing read
-it back: ``grep intrinsics_file`` found only the schema and the writer. This is the missing loader, and
-the read side of decision **D1** (offer both factory and calibrated intrinsics):
+The read side of decision D1, which offers two sources of intrinsics and imposes neither:
 
   * Factory: the device's own ``get_intrinsics()`` / ``get_distortion()``, live after ``open()``.
-  * Calibrated: an ``intrinsics.json`` produced either by the streamer's factory export or by a bench
-    ``cv2.calibrateCamera`` run. This loader reads whichever is on disk.
+  * Calibrated: an ``intrinsics.json`` written by the RealSense streamer's ``_export_intrinsics``
+    or by a bench ``cv2.calibrateCamera`` run. This loader reads whichever is on disk.
 
 A consumer that wants the factory K uses the streamer directly; one that wants a bench-calibrated K
-points this loader at the file. Neither is imposed, so the operator chooses, and can compare the two by
-the reprojection residual the calibration run reports.
+points this loader at the file. The two compare by the reprojection residual the calibration run
+reports.
 """
 
 from __future__ import annotations
@@ -26,10 +24,9 @@ __all__ = ["load_intrinsics"]
 def load_intrinsics(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """Load ``intrinsics.json`` into a 3x3 ``K`` and a distortion vector.
 
-    Accepts the streamer's ``fx/fy/cx/cy(+dist)`` schema. A missing or empty ``dist`` yields ``zeros(5)``
-    -- the honest "no distortion known" default a PnP solve expects. Raises ``FileNotFoundError`` if the
-    file is absent (fail loud: a silently-defaulted K is worse than a stop) and ``ValueError`` on a
-    malformed one.
+    Accepts the streamer's ``fx/fy/cx/cy(+dist)`` schema. A missing or empty ``dist`` yields
+    ``zeros(5)``, the "no distortion known" default a PnP solve expects. An absent file raises
+    ``FileNotFoundError`` rather than defaulting K, and a malformed one raises ``ValueError``.
     """
     p = Path(path)
     if not p.is_file():

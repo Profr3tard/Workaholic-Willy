@@ -1,4 +1,4 @@
-"""KUKA driver config schema (R7.1 split from robot_schema.py)."""
+"""KUKA driver config schema."""
 
 from __future__ import annotations
 
@@ -27,9 +27,8 @@ class KukaEkiConfig(StrictModel):
 class KukaConfig(StrictModel):
     """Vendor-specific KUKA settings.
 
-    The only planned transport for the first implementation is
-    EthernetKRL (EKI/KRL) over TCP/XML because it is the simplest fit
-    for a Python application running on Windows.
+    The only transport planned for the first implementation is
+    EthernetKRL (EKI/KRL) over TCP/XML.
 
     ``controller_ip`` is the network address of the KUKA controller
     itself. It is consulted when ``eki.role == "client"`` (Willy dials

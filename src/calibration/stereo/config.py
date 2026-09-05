@@ -31,10 +31,10 @@ class CalibrationResult:
 
     The small per-camera parameters (intrinsics ``camL``/``camR``, distortion
     ``distL``/``distR``, rectification rotations ``rectL``/``rectR`` and
-    projections ``projL``/``projR``, plus ``Q``) are the source of truth.
-    Persistence stores only these; the per-pixel rectification remap tables and
-    the rectified intrinsics are *derived* on construction, so a megabyte of
-    maps never has to be serialised.
+    projections ``projL``/``projR``, plus ``Q``) are the source of truth and
+    the only fields persisted. The per-pixel rectification remap tables and the
+    rectified intrinsics are derived on construction, so a megabyte of maps
+    never has to be serialised.
     """
 
     camL: np.ndarray

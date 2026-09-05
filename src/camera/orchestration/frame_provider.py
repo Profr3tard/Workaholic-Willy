@@ -62,9 +62,9 @@ class FrameProvider:
         self._streamers: dict[str, AnyStreamer] = {}
         self._stereo = stereo
         self._stereo_rig_index: dict[str, int] = {}
-        #: Which rigs are currently streaming. PER RIG rather than one flag, because a consumer that
-        #: was handed a single rig must be able to give that one back without closing devices it was
-        #: never given; see `RigHandle.release`.
+        #: Which rigs are currently streaming, tracked per rig rather than by one flag, so a
+        #: consumer handed a single rig can give that one back without closing devices it was
+        #: never given. See `RigHandle.release`.
         self._open_rigs: set[str] = set()
 
         stereo_idx = 0
@@ -86,9 +86,8 @@ class FrameProvider:
     def is_open(self) -> bool:
         """True when every rig is streaming.
 
-        Derived from the per-rig set rather than a single flag, so a provider whose one rig has been
-        handed back is correctly no longer "open", where a flag would have kept saying yes and let the next
-        ``grab`` reach a released device.
+        Derived from the per-rig set, so a provider whose one rig has been handed back is no
+        longer open and the next ``grab`` on it fails instead of reaching a released device.
         """
         return bool(self._rigs) and self._open_rigs == set(self._rigs)
 
@@ -117,12 +116,10 @@ class FrameProvider:
     def open_rig(self, rig_id: str) -> None:
         """Open one rig and leave the others untouched. Idempotent.
 
-        The counterpart to `release_rig`, and what lets a consumer route through this class without
-        acquiring devices it does not use. A cell needs one RGB-D camera; `open()` would have claimed
-        every configured rig, and on this project an opened camera that nobody closes is a defect with
-        a history. Constructing a streamer touches no device, since every ``__init__`` under
-        `camera.setup.image_taking` only stores config, so a provider may know every rig while
-        holding only the ones it was asked for.
+        The counterpart to `release_rig`, for a consumer that needs a single rig where `open()`
+        would claim every configured one. Constructing a streamer touches no device, because
+        every ``__init__`` under `camera.setup.image_taking` only stores config, so a provider
+        may know every rig while holding only the ones it was asked for.
         """
         streamer = self._require_streamer(rig_id)
         if rig_id in self._open_rigs:
@@ -138,16 +135,14 @@ class FrameProvider:
     def release_rig(self, rig_id: str) -> None:
         """Release one rig and leave every other one streaming. Idempotent, and it never raises.
 
-        This is what makes a shared provider safe to hand out. A consumer given one rig must be able
-        to give that one back, and the console's only teardown path reaches through a built service to
-        ``perception.close()`` (``api/lifecycle.release_perception``), so a handle that could not
-        release would have turned the one call that closes a camera into a silent no-op, and a cell
-        that is rebuilt would never get its device back. It must equally not be able to close a device
-        it was never handed, which is why this takes an id rather than tearing down the provider.
+        Takes a rig id rather than tearing down the provider, so a consumer can give back the rig
+        it was handed and cannot close one it was not. This is the call the console's only teardown
+        path ends in, through a built service: ``api/lifecycle.release_perception`` ->
+        ``perception.close()``.
 
-        Never raises, because this is teardown: a camera that cannot be closed must not stop the thing
-        that was closing it. It is logged, because a device that would not close is the reason the next
-        open fails.
+        Never raises, because this is teardown and a camera that cannot be closed must not stop the
+        thing closing it. The failure is logged, because a device that will not close is why the
+        next open fails.
         """
         self._require_rig(rig_id)
         if rig_id not in self._open_rigs:
@@ -169,8 +164,8 @@ class FrameProvider:
     def grab(self, rig_id: str) -> AnyFrame:
         """Grab a raw frame from ``rig_id`` (a StereoFrame or RGBDFrame per the rig kind)."""
         streamer = self._require_streamer(rig_id)
-        # PER RIG, not for the provider as a whole: one rig handed back must fail loudly here rather
-        # than reach a released device, and it must not make the others unreachable.
+        # Checked per rig, not for the provider as a whole: a rig that was handed back fails here
+        # rather than reaching a released device, and the other rigs stay reachable.
         self._require_open(rig_id)
         return streamer.grab()
 
@@ -218,12 +213,11 @@ class FrameProvider:
     def get_intrinsics(self, rig_id: str) -> "np.ndarray | None":
         """The camera matrix ``rig_id`` reports, or ``None`` if its streamer does not have one.
 
-        Added because its absence is why the pick PATH bypassed this class. Both consumers of a real
-        camera need K, the perception adapter to unproject and `GraspCalculator` at construction,
-        and the provider could hand out frames but not the matrix that gives them a metric meaning. So
-        the robot path built its own `RealSenseRGBDStreamer` and every rig-keyed guarantee here was
-        simply not on it. A stereo rig legitimately answers ``None``: its geometry lives in
-        `StereoCam3D`, not in a single pinhole matrix.
+        Both consumers of a real camera need K: the perception adapter to unproject, and
+        `GraspCalculator` at construction. Without it a caller holds frames but not the matrix that
+        gives them a metric meaning, and has to open its own `RealSenseRGBDStreamer` to get one,
+        outside every rig-keyed guarantee this class makes. A stereo rig legitimately answers
+        ``None``, its geometry living in `StereoCam3D` rather than in a single pinhole matrix.
         """
         streamer = self._require_streamer(rig_id)
         self._require_open(rig_id)
@@ -237,11 +231,10 @@ class FrameProvider:
     def get_distortion(self, rig_id: str) -> "np.ndarray | None":
         """The lens distortion coefficients ``rig_id`` reports, or ``None`` when it has none.
 
-        Needed by hand-eye calibration, which is why it is here beside `get_intrinsics`.
+        Needed by hand-eye calibration, which is why it sits beside `get_intrinsics`.
         `calibration.rgbd_marker_source.RGBDArucoMarkerSource`, the piece that lets a fixed RGB-D
-        camera see the ArUco board. It duck-types against ``grab`` / ``get_intrinsics`` /
-        ``get_distortion``, and a handle missing the third would have made every camera addressable
-        and none of them calibratable.
+        camera see the ArUco board, duck-types against ``grab``, ``get_intrinsics`` and
+        ``get_distortion``: a handle carrying only the first two is addressable, not calibratable.
         """
         streamer = self._require_streamer(rig_id)
         self._require_open(rig_id)
@@ -251,10 +244,9 @@ class FrameProvider:
     def rig(self, rig_id: str) -> "RigHandle":
         """A handle to one rig, shaped like the streamer its consumer already expects.
 
-        This is the seam that lets every camera run through this class without any consumer learning
-        about it: the handle answers ``grab()``, ``get_intrinsics()`` and ``release()``, which is
-        exactly the surface `RealSenseVisionPerceptionSource` duck-types against. It can reach one
-        rig and no other.
+        The handle answers ``grab()``, ``get_intrinsics()`` and ``release()``, the surface
+        `RealSenseVisionPerceptionSource` duck-types against, so a camera can run through this
+        class without its consumer knowing about it. It can reach one rig and no other.
         """
         self._require_rig(rig_id)
         return RigHandle(self, rig_id)
@@ -296,16 +288,13 @@ class FrameProvider:
 class RigHandle:
     """One rig of a :class:`FrameProvider`, shaped like the streamer its consumer already expects.
 
-    Why a handle and not the provider itself. The robot pick path consumes a duck-typed streamer --
-    ``grab()``, ``get_intrinsics()`` and ``release()``, and so does `datagen`'s camera probe, which
-    deliberately passes a shim to exercise the adapter with no hardware present. Handing those a
-    provider would have made the adapter learn about camera orchestration and broken the shim. Handing
-    them a handle changes nothing on their side and still routes every frame through the one class
-    that owns rig identity and lifecycle.
+    The robot pick path consumes a duck-typed streamer, ``grab()`` / ``get_intrinsics()`` /
+    ``release()``, and so does `datagen`'s camera probe, which passes a shim so the adapter can be
+    exercised with no hardware present. A handle keeps that surface, so neither has to learn about
+    camera orchestration, while every frame still goes through the one class that owns rig identity
+    and lifecycle.
 
-    It can reach one rig. ``release()`` gives that rig back and leaves every other one streaming --
-    which is what makes a shared provider safe to hand out, and what keeps the console's only teardown
-    path (``api/lifecycle.release_perception`` -> ``perception.close()``) doing what it says.
+    It can reach one rig. ``release()`` gives that rig back and leaves every other one streaming.
     """
 
     __slots__ = ("_provider", "rig_id")

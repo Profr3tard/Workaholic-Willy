@@ -1,4 +1,4 @@
-"""Grasping (deterministic + RL-shadow) config schema (R7.1 split from robot_schema.py)."""
+"""Grasping (deterministic + RL-shadow) config schema, a sibling of robot_schema.py."""
 
 from __future__ import annotations
 
@@ -41,13 +41,11 @@ class GraspingVerificationConfig(StrictModel):
     require_object_detected: bool = Field(default=False)
     width_delta_min_mm: float = Field(default=2.0, ge=0.0, le=50.0)
     #: How far above the commanded close width the jaws may sit and still count as engaged, mm.
-    #:
-    #: Without an upper bound the verifier cannot see the case it exists for. A gripper whose close
-    #: never executed sits at its pre-open width (~80 mm on a 2F-85), and with no ceiling that is
-    #: reported passed: the cell carries air to the drop-off and logs a success. 10 mm separates
-    #: cleanly (a commanded 45 mm close reads 45-ish when it holds, ~80 mm when it did not) while
-    #: leaving room for a compliant object that lands a few mm proud of the command. Re-measure on
-    #: the real jaw before trusting the exact number.
+    #: Without a ceiling a gripper whose close never executed sits at its pre-open width (~80 mm on
+    #: a 2F-85) and still passes, so the cell carries air to the drop-off and logs a success. 10 mm
+    #: separates cleanly: a commanded 45 mm close reads 45-ish when it holds and ~80 mm when it did
+    #: not, with room for a compliant object a few mm proud of the command. Re-measure on the real
+    #: jaw before trusting the exact number.
     width_delta_max_mm: float | None = Field(default=10.0, ge=0.0, le=50.0)
     post_lift_vision_check: bool = Field(default=False)
     vision_displacement_iou_max: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -55,7 +53,7 @@ class GraspingVerificationConfig(StrictModel):
     require_all_conclusive: bool = Field(
         default=False,
         description=(
-            "How to treat a verifier that could not MEASURE anything: a gripper with no width "
+            "How to treat a verifier that could not measure anything: a gripper with no width "
             "feedback and no object-detect capability returns INCONCLUSIVE, not FAILED. False "
             "(default) counts it as a pass and logs a WARNING plus a telemetry stamp saying "
             "verification ran and learned nothing, because the alternative is a sensorless cell "
@@ -77,23 +75,17 @@ class GraspingDenseRecoveryConfig(StrictModel):
     enabled: bool = Field(default=False)
     #: Per-attempt recovery budget for the dense-recovery block.
     #:
-    #: Read: `build_subpolicies` copies it into a `SceneRecoveryPolicy`, but that policy object is
-    #: stored on the service and never consulted by any pick path; the budget that binds at runtime is
-    #: `robot.grasping.recovery.max_recovery_actions` one block over. So the key is dead in effect
-    #: while being live in the type system.
-    #:
-    #: Kept deliberately: deleting it forces deleting the branch
-    #: that reads it, which forces unpicking the unconsumed `recovery_policy` plumbing through a
-    #: fail-closed service. That is a refactor with its own blast radius, not a config tidy-up, and it
-    #: is queued as a separate decision.
+    #: `build_subpolicies` copies it into a `SceneRecoveryPolicy` that is stored on the service and
+    #: never consulted by any pick path, so the key is live in the type system and dead in effect.
+    #: The budget that binds at runtime is `robot.grasping.recovery.max_recovery_actions`, one
+    #: block over. Kept deliberately: deleting it forces unpicking the unconsumed `recovery_policy`
+    #: plumbing through a fail-closed service, a refactor rather than a config tidy-up.
     max_recovery_actions: int = Field(default=2, ge=0, le=10)
     strategy: Literal["active_perception", "next_target", "none"] = Field(
         default="active_perception",
         description=(
-            "WHICH recovery to plan when a pick fails. The policy above says what is PERMITTED; "
-            "this says what is proposed, and until 2026-08-14 nothing said it at all: the "
-            "strategy was a constructor argument no config path ever filled, so `enabled: true` "
-            "produced a policy with nothing to drive it.\n\n"
+            "Which recovery to plan when a pick fails. The policy above says what is permitted; "
+            "this says what is proposed.\n\n"
             "`active_perception` (default) escalates RESCAN -> NEXT_VIEWPOINT: look again, then "
             "look from somewhere else. It never moves a part, so it cannot make the scene worse, "
             "and it addresses the failure this reference actually has: 68 % of visible objects "
@@ -111,7 +103,7 @@ class GraspingDecisionConfig(StrictModel):
 
     Consumed by :class:`src.robot.grasping.decision.DecisionPolicy` when
     the operator opts the auto fail-closed decision layer on. Defaults to
-    ``enabled=False`` so an existing ``robot.yaml`` keeps its previous behaviour.
+    ``enabled=False``, so a ``robot.yaml`` that omits the block is unaffected.
 
     Attributes
     ----------
@@ -291,14 +283,10 @@ class BlockerGraphSchemaConfig(StrictModel):
     mask_adjacency_enabled: bool = Field(default=False)
     depth_only_enabled: bool = Field(default=False)
     #: Reserved: whether two candidates whose approach corridors overlap count as blocking each other.
-    #: The flag is carried the whole way: schema -> EffectiveOrderingConfig -> the frozen 79-key
+    #: The flag is carried the whole way, schema -> EffectiveOrderingConfig -> the frozen 79-key
     #: telemetry dict as `ordering_corridor_overlap_enabled` -> BlockerGraphConfig, and
-    #: `target_selector._blocks` then deliberately does nothing with it, because corridor geometry is
-    #: not consumed there yet.
-    #:
-    #: Kept deliberately: a key that reaches a frozen telemetry contract is recorded, not dead, and
-    #: deleting it would change that contract's key set. Deleting it is a decision about the
-    #: telemetry catalog, not a tidy-up.
+    #: `target_selector._blocks` does nothing with it: corridor geometry is not consumed there. The
+    #: key reaches a frozen telemetry contract, so removing it changes that contract's key set.
     corridor_overlap_enabled: bool = Field(default=False)
     adjacency_radius_px: int = Field(default=5, ge=0, le=128)
     depth_tolerance_mm: float = Field(default=10.0, ge=0.0)
@@ -307,8 +295,8 @@ class BlockerGraphSchemaConfig(StrictModel):
 class GraspingOrderingConfig(StrictModel):
     """Clutter-aware target-ordering knobs.
 
-    When :attr:`enabled` the runtime computes an *unlock score* per candidate via
-    the configured :class:`BlockerGraphSchemaConfig` signals and a *priority*
+    When :attr:`enabled` the runtime computes an unlock score per candidate via
+    the configured :class:`BlockerGraphSchemaConfig` signals and a priority
     score ``local + unlock_weight * unlock``. The ``argmax(local_score)`` winner
     is only displaced when the priority winner is within
     :attr:`max_local_score_drop` of it: the operator decides how much local score
@@ -415,9 +403,9 @@ class GraspingRecoveryFixtureConfig(StrictModel):
     """Operator-bounded envelope for physical recovery actions.
 
     A recovery action is the robot deliberately pushing something: nudging a part that will not
-    separate, agitating a container. That is motion aimed at the scene rather than at a grasp, so its
-    reach is bounded by the operator rather than inferred: these three numbers are where a person says
-    how far the cell is allowed to shove things, and the recovery planner may not exceed them.
+    separate, agitating a container. That is motion aimed at the scene rather than at a grasp, so
+    its reach is declared by the operator rather than inferred, and the recovery planner may not
+    exceed these three numbers.
     """
 
     #: Centre of the axis-aligned box, in the robot BASE frame (mm), inside which a physical recovery
@@ -553,7 +541,7 @@ class GraspingUncertaintyConfig(StrictModel):
         if "easy" in self.apply_modes:
             raise ValueError(
                 "uncertainty.apply_modes must not include 'easy'; "
-                "EASY mode is permanently excluded from T6."
+                "'easy' mode is permanently excluded from T6."
             )
         unknown = [m for m in self.apply_modes if m not in _KNOWN_GRASP_MODES]
         if unknown:
@@ -570,7 +558,7 @@ class GraspingUncertaintyConfig(StrictModel):
         bad_rerank = [m for m in self.rerank_modes if m not in _dense_rerank_modes]
         if bad_rerank:
             raise ValueError(
-                "uncertainty.rerank_modes is LOCKED to dense modes only "
+                "uncertainty.rerank_modes is locked to dense modes only "
                 f"(mirrors the U4 ranking-blend contract); got disallowed mode(s) {bad_rerank!r}; "
                 f"valid: {sorted(_dense_rerank_modes)!r}"
             )
@@ -649,12 +637,10 @@ class GraspingSuccessModelConfig(StrictModel):
         description=(
             "U4 lifecycle gate (G1). 'shadow' (default) = the learned success predictor runs but its "
             "output is discarded (byte-identical to the no-blend path). 'canary'/'active' let the "
-            "bounded blend REORDER candidates in the dense modes; both REQUIRE a valid promotion.json "
+            "bounded blend reorder candidates in the dense modes; both require a valid promotion.json "
             "(verify_promotion: SHA-chain + verdict='pass' + thresholds not weaker than plan-locked + "
             "the plan-locked validation slice + metrics that agree with the recorded bounds) or the "
-            "model load fails CLOSED to None (no blend). Previously this was hardcoded to 'shadow' in "
-            "the builder, so the "
-            "promoted predictor could never influence which grasp executes."
+            "model load fails closed to None (no blend)."
         ),
     )
 
@@ -678,7 +664,7 @@ class GraspingSuccessModelConfig(StrictModel):
         ]
         if forbidden:
             raise ValueError(
-                "success_model.ranking_blend_modes is LOCKED to "
+                "success_model.ranking_blend_modes is locked to "
                 "dense modes only per the U4 design contract; "
                 f"got disallowed mode(s) {forbidden!r}; valid: "
                 f"{sorted(_DENSE_ONLY)!r}"
@@ -848,7 +834,7 @@ class GraspingWatchdogConfig(StrictModel):
         if "easy" in self.block_modes:
             raise ValueError(
                 "watchdog.block_modes must not include 'easy'; "
-                "EASY mode is permanently excluded from U+ "
+                "'easy' mode is permanently excluded from U+ "
                 "behavioural layers."
             )
         unknown = [m for m in self.block_modes if m not in _KNOWN_GRASP_MODES]
@@ -1059,7 +1045,7 @@ class RobotGraspingCommitPolicyConfig(StrictModel):
         default=("auto", "dense_clutter", "dense_autonomous"),
         description=(
             "Mode labels that activate the gate. Defaults to all modes "
-            "except EASY. The orchestrator skips the gate (and the "
+            "except 'easy'. The orchestrator skips the gate (and the "
             "reobserve loop) when its resolved mode label is not in this set."
         ),
     )
@@ -1078,7 +1064,7 @@ class RobotGraspingCommitPolicyConfig(StrictModel):
         if "easy" in self.apply_modes:
             raise ValueError(
                 "commit_policy.apply_modes must not include 'easy' "
-                "(locked Q5: EASY is exempt from mandatory multi-view "
+                "(locked Q5: 'easy' is exempt from mandatory multi-view "
                 "decisioning)"
             )
         return self
@@ -1122,7 +1108,7 @@ class RobotGraspingApproachValidationConfig(StrictModel):
         default=("dense_clutter", "dense_autonomous"),
         description=(
             "Mode labels that activate the validator (the dense modes by default). The orchestrator "
-            "skips the check when its resolved mode label is not in this set. EASY is locked out."
+            "skips the check when its resolved mode label is not in this set. 'easy' is locked out."
         ),
     )
 
@@ -1165,17 +1151,17 @@ class CameraExtrinsicsConfig(StrictModel):
 
 
 class FusionGeometryConfig(StrictModel):
-    """Fuse each object's surface across the fixed cameras, and feed that to the grasp generator.
+    """Fuse each object's surface across the fixed cameras and feed that to the grasp generator.
 
-    Deliberately a separate switch from ``fusion.enabled``. That one turns on the voxel-occupancy
-    substrate, which is shadow-only: it emits telemetry and no grasping path consumes it. This one
-    changes the grasp candidates themselves: every camera that can identify an object contributes its
-    view of that object's surface, and the generator plans on the union.
+    A separate switch from ``fusion.enabled``: that one turns on the voxel-occupancy substrate,
+    which is shadow-only, emitting telemetry no grasping path consumes. This one changes the grasp
+    candidates themselves, since every camera that can identify an object contributes its view of
+    that object's surface and the generator plans on the union.
 
-    Why it is the biggest measured lever. A candidate is accepted or rejected on its closing axis,
-    the closing axis comes from the object's silhouette, and one depth view only ever sees one side
-    of an object, while an antipodal grasp needs two. Measured on the datagen reference through the
-    real calculator (n=354): top-1 43.50 % single-view -> 55.93 % fused, coverage 53.67 -> 64.69 %.
+    A candidate is accepted or rejected on its closing axis, the closing axis comes from the
+    object's silhouette, and one depth view sees one side of an object while an antipodal grasp
+    needs two. Measured on the datagen reference through the real calculator (n=354): top-1
+    43.50 % single-view -> 55.93 % fused, coverage 53.67 -> 64.69 %.
 
     Requires ``cameras`` to be populated (each camera individually calibrated) and a multi-camera
     perception source at runtime. Without both this stands down to the single-view path and stamps
@@ -1192,7 +1178,7 @@ class FusionGeometryConfig(StrictModel):
     metric: Literal["overlap", "box_iou", "centroid"] = Field(
         default="overlap",
         description=(
-            "How 'the same object' is scored across cameras. MEASURED over 1240 answerable decisions "
+            "How 'the same object' is scored across cameras. Measured over 1240 answerable decisions "
             "and 488 where the target was absent from the other view: `overlap` gets 92.0 % of the "
             "answerable ones right at 0.08 % wrong and correctly refuses 98.2 % of the impossible "
             "ones. `centroid` looks better on the answerable half alone (99.5 %) and is the trap: "
@@ -1205,7 +1191,7 @@ class FusionGeometryConfig(StrictModel):
         ge=0.0,
         le=1.0,
         description=(
-            "Match score a camera must clear to contribute. Below it the camera contributes NOTHING "
+            "Match score a camera must clear to contribute. Below it the camera contributes nothing "
             "for that object, exactly as an occluded camera does. Fusing the wrong object is worse "
             "than fusing one fewer view: it invents a contact face the generator cannot distinguish "
             "from a real one."
@@ -1226,15 +1212,15 @@ class FusionGeometryConfig(StrictModel):
         ge=0.0,
         le=50.0,
         description=(
-            "Decimate each cloud to one point per this many mm BEFORE the association SCORING ONLY. "
+            "Decimate each cloud to one point per this many mm, for the association scoring only. "
             "0.0 (default) = off, byte-identical. The fused cloud handed to the grasp generator is "
-            "rebuilt from the ORIGINAL full-resolution clouds, so this makes the MATCH DECISION "
-            "cheaper without making the geometry coarser. It exists because `_overlap_fraction` "
-            "documents its own precondition, 'the clouds are a few thousand points at most', and "
-            "a data-generation corpus violates it by an order of magnitude: measured 2026-08-19, one "
-            "datagen object's cloud is 37,119 points and a single scene's fusion took 182.7 s. "
-            "Applies to the `overlap` metric only; `centroid` and `box_iou` are already cheap and "
-            "must not shift by a voxel because this is set."
+            "rebuilt from the original full-resolution clouds, so this makes the match decision "
+            "cheaper without making the geometry coarser. `_overlap_fraction` states its own "
+            "precondition, 'the clouds are a few thousand points at most', and a data-generation "
+            "corpus violates it by an order of magnitude: one datagen object's cloud is 37,119 "
+            "points and a single scene's fusion took 182.7 s. Applies to the `overlap` metric only; "
+            "`centroid` and `box_iou` are already cheap and must not shift by a voxel because this "
+            "is set."
         ),
     )
     max_centroid_mm: float = Field(
@@ -1256,22 +1242,22 @@ class FusionGeometryConfig(StrictModel):
     neighbour_scene_enabled: bool = Field(
         default=False,
         description=(
-            "Also give the COLLISION filter what the other cameras see: each object gets every "
-            "other camera's view of everything that is NOT itself, fed as `scene_points_mm`. "
+            "Also give the collision filter what the other cameras see: each object gets every "
+            "other camera's view of everything that is not itself, fed as `scene_points_mm`. "
             "Requires `enabled`. False (default) = byte-identical.\n\n"
-            "MEASURED, AND IT DID NOT DO WHAT IT WAS BUILT FOR (n=1073 visible objects, D5 "
-            "reference, GT masks). The premise was that `finger_collision` is 60.0 % of every "
-            "mis-rank left after target fusion, so showing the filter the hidden neighbours would "
-            "close it. Paired per object: 5 grasps rescued, 4 destroyed, NET +3 picks in 1073. "
-            "Candidate precision does rise 64.6 -> 70.4 % and the cost is ~1.6 ms, but the gap "
-            "itself barely moves (45 -> 39 objects) and `finger_collision` is still 59.0 % of it.\n\n"
-            "WHY, and this is the useful part: replaying the reference verdict on the surviving "
-            "rank-0 winners shows 60.9 % of them collide with a BIN WALL, not with an object, "
-            "and in the `bin` family it is 14 of 14. No camera segments a wall as an instance, so "
-            "no amount of object fusion can reach it (nothing in this stack carries wall geometry "
-            "at all; `support.container` is a floor height). Where the blocker IS an object the "
-            "lever works exactly as designed: the `pile` gap HALVED, 8 -> 4. So this is on for a "
-            "pile/heap cell and pointless for a bin until walls become collision geometry."
+            "`finger_collision` is 60.0 % of every mis-rank left after target fusion, and showing "
+            "the filter the hidden neighbours does not close it. Measured over 1073 visible objects "
+            "(D5 reference, GT masks), paired per object: 5 grasps rescued, 4 destroyed, net +3 "
+            "picks in 1073. Candidate precision does rise 64.6 -> 70.4 % at a cost of ~1.6 ms, but "
+            "the gap itself barely moves (45 -> 39 objects) and `finger_collision` is still 59.0 % "
+            "of it.\n\n"
+            "Replaying the reference verdict on the surviving rank-0 winners shows 60.9 % of them "
+            "collide with a bin wall rather than with an object, and in the `bin` family it is 14 "
+            "of 14. No camera segments a wall as an instance, so no amount of object fusion reaches "
+            "one: wall geometry comes from `container.interior_min_mm` and `interior_max_mm` with "
+            "`container.wall_collision_enabled` set, never from a camera. Where the blocker is an "
+            "object the lever works as designed: the `pile` gap halves, 8 -> 4. So this is on for a "
+            "pile or heap cell, and for a bin it needs the container walls declared as well."
         ),
     )
     neighbour_voxel_mm: float = Field(
@@ -1395,11 +1381,11 @@ class RobotGraspingFusionConfig(StrictModel):
         default=None,
         description=(
             "Path to a persisted eye-to-hand Extrinsics JSON artifact (CAMERA -> BASE), as written "
-            "by ``src.calibration.serialization.save_extrinsics``. When set AND ``enabled`` is "
+            "by ``src.calibration.serialization.save_extrinsics``. When set and ``enabled`` is "
             "True, ``AutonomousGraspService.from_robot_config`` builds a StaticCameraToBaseResolver from "
             "the loaded transform so the multi-view fusion substrate + the commit gate become "
-            "REACHABLE in production. ``None`` (default) builds no resolver (byte-identical). "
-            "FAIL-CLOSED: a set-but-unloadable path raises at construction (a misconfigured fusion "
+            "reachable in production. ``None`` (default) builds no resolver (byte-identical). "
+            "Fail-closed: a set-but-unloadable path raises at construction (a misconfigured fusion "
             "deployment must not silently run with an unreachable gate). Eye-in-hand cells leave this "
             "None and pass a ``frame_resolver`` kwarg in code (the live TCP-composed resolver cannot be "
             "serialized)."
@@ -1408,11 +1394,11 @@ class RobotGraspingFusionConfig(StrictModel):
     cameras: dict[str, CameraExtrinsicsConfig] = Field(
         default_factory=dict,
         description=(
-            "MULTI-CAMERA calibration map: camera_id -> {enabled, mounting_mode, extrinsics_artifact_path}. "
+            "Multi-camera calibration map: camera_id -> {enabled, mounting_mode, extrinsics_artifact_path}. "
             "The central place to declare + individually calibrate several cameras (multi-view). "
             "``build_config_frame_resolvers`` turns it into a {camera_id -> FrameResolver} map (eye_to_hand "
             "-> StaticCameraToBaseResolver, eye_in_hand -> EyeInHandFrameResolver). Empty (default) = the "
-            "legacy single-camera path via ``extrinsics_artifact_path`` (byte-identical). FAIL-CLOSED: an "
+            "legacy single-camera path via ``extrinsics_artifact_path`` (byte-identical). Fail-closed: an "
             "enabled camera with a missing/invalid artifact raises at construction."
         ),
     )
@@ -1470,26 +1456,20 @@ class GraspingParallelJawGeometryConfig(StrictModel):
 
     Every value flows straight into
     :class:`src.robot.grasping.collision.ParallelJawGripperModel`. The finger dimensions are
-    Measured off Isaac's Robotiq 2F-85 collision shapes (see the note on the fields); the palm ones are
-    not, and are marked as such.
+    measured off Isaac's Robotiq 2F-85 collision shapes (see the note on the fields); the palm ones
+    are not, and are marked as such.
     """
 
-    # Measured off the 2F-85's own collision shapes on 2026-08-14, in this frame, and swept across the
-    # whole aperture range because the finger swings as the jaw moves: closing it pushes the tip
-    # forward, so the reach toward the table is largest at a narrow aperture, exactly the case of a
-    # thin object gripped close to the table. Each value below is the worst case over apertures
+    # Measured off the 2F-85's own collision shapes in this frame, swept across the whole aperture
+    # range because the finger swings as the jaw moves: closing it pushes the tip forward, so the
+    # reach toward the table is largest at a narrow aperture, exactly the case of a thin object
+    # gripped close to the table. Each value below is the worst case over apertures
     # 10/25/40/55/70/82 mm, which is what a conservative envelope needs.
     #
-    #                       measured    was     why the old value was wrong
-    #   finger_length_mm      39.98     60.0    over-modelled backwards (harmless, but not the gripper)
-    #   fingertip_depth_mm    28.72      6.0    4.8x under-modelled, and it points at the table
-    #   finger_thickness_mm   31.35     12.0    the pad alone is 19.16; the link is 31.35
-    #   finger_width_mm       27.00     22.0    22.0 is the pad's width, not the link's
-    #
-    # The docstring above claimed these defaults "match the shipped 2F-85-class box model". They did
-    # not. ``fingertip_depth_mm`` is the one that cost something: it says how far the finger reaches
-    # Past the grasp point along the approach, i.e. toward the support surface, and at 6.0 mm it hid
-    # 23 mm of finger from every table-clearance check.
+    # These values describe the whole finger link, not the rubber pad: the pad alone is
+    # 19.16 mm thick against the link's 31.35, and 22.0 mm wide against the link's 27.0.
+    # ``fingertip_depth_mm`` is the one that decides table clearance, because it says how far the
+    # finger reaches past the grasp point along the approach, i.e. toward the support surface.
     finger_length_mm: float = Field(default=39.98, gt=0.0, le=500.0)
     finger_thickness_mm: float = Field(default=31.35, gt=0.0, le=200.0)
     finger_width_mm: float = Field(default=27.0, gt=0.0, le=200.0)
@@ -1501,13 +1481,13 @@ class GraspingParallelJawGeometryConfig(StrictModel):
     #: contact. Distinct from ``fingertip_depth_mm`` (the whole link's reach) because antipodality and
     #: table clearance are decided by the patch, not by the housing around it.
     pad_length_mm: float = Field(default=38.0, gt=0.0, le=300.0)
-    #: How far the patch reaches in front of the grasp centre. Measured 23.61 mm, and deliberately not
-    #: derived from ``fingertip_depth_mm``: the finger housing extends 5.11 mm past the rubber, so
-    #: deriving it placed the whole patch that far forward. The remainder (pad_length - pad_ahead)
+    #: How far the patch reaches in front of the grasp centre. Measured 23.61 mm, and not derived
+    #: from ``fingertip_depth_mm``: the finger housing extends 5.11 mm past the rubber, so deriving
+    #: it would place the whole patch that far forward. The remainder (pad_length - pad_ahead)
     #: reaches back toward the wrist.
     pad_ahead_mm: float = Field(default=23.61, gt=0.0, le=300.0)
-    # Not measured: the palm was never probed, so these keep their shipped values and say so rather
-    # than being "corrected" to a number nobody took.
+    # Not measured: the palm was never probed, so these are the shipped values rather than a
+    # measurement.
     palm_depth_mm: float = Field(default=35.0, gt=0.0, le=500.0)
     palm_width_mm: float = Field(default=70.0, gt=0.0, le=500.0)
 
@@ -1530,36 +1510,35 @@ class GraspingSuctionCupGeometryConfig(StrictModel):
 
 
 class GraspingContainerConfig(StrictModel):
-    """optional bin / tray / KLT the objects sit inside. Everything here defaults to "no container".
+    """Optional bin, tray or KLT the objects sit inside. Everything here defaults to "no container".
 
-    Give it when the parts do not rest on the table itself. A KLT standing on the workspace raises the
-    surface its contents rest on by the thickness of its own floor, and a grasp planner that thinks the
-    support is the table will allow a finger that many millimetres too low.
+    Give it when the parts do not rest on the table itself. A KLT standing on the workspace raises
+    the surface its contents rest on by the thickness of its own floor, and a grasp planner that
+    thinks the support is the table will allow a finger that many millimetres too low.
 
     ``floor_height_mm`` is the inside floor in BASE, the surface you would touch if you reached
     into the empty bin. It is not the height of the bin, and not the rim.
 
-    **The walls are the other half.** The candidate filter checks a target cloud, the neighbours'
+    The walls are the other half. The candidate filter checks a target cloud, the neighbours'
     clouds and a support plane, and a plane is a floor, so a wall stays invisible to it until one
-    is declared here and ``wall_collision_enabled`` turns the check on. Measured consequence, by
-    replaying the reference verdict on the rank-0 winners that lose the ranking gap on
-    ``finger_collision``: **60.9 % of them hit a bin
-    wall, and in the bin family it is 14 of 14.** No camera can close that: a wall is not an
-    instance any detector segments, so it has to be declared. That is what ``interior_min_mm`` /
-    ``interior_max_mm`` are for.
+    is declared here and ``wall_collision_enabled`` turns the check on. Replaying the reference
+    verdict on the rank-0 winners that lose the ranking gap on ``finger_collision``: 60.9 % of them
+    hit a bin wall, and in the bin family it is 14 of 14. A wall is not an instance any detector
+    segments, so no camera can close that and it has to be declared, which is what
+    ``interior_min_mm`` / ``interior_max_mm`` are for.
     """
 
     floor_height_mm: float | None = Field(
         default=None,
         description=(
-            "Height in BASE mm of the surface INSIDE the container that parts rest on. None (default) "
+            "Height in BASE mm of the surface inside the container that parts rest on. None (default) "
             "-> the workspace surface is used, i.e. no container."
         ),
     )
     interior_min_mm: tuple[float, float, float] | None = Field(
         default=None,
         description=(
-            "Lower corner of the container's INTERIOR box in BASE mm (x, y, z), the empty volume "
+            "Lower corner of the container's interior box in BASE mm (x, y, z), the empty volume "
             "you could pour parts into. z is the inside floor, the same surface as "
             "`floor_height_mm`. None (default) -> no wall geometry."
         ),
@@ -1567,7 +1546,7 @@ class GraspingContainerConfig(StrictModel):
     interior_max_mm: tuple[float, float, float] | None = Field(
         default=None,
         description=(
-            "Upper corner of the container's INTERIOR box in BASE mm (x, y, z). z is the RIM, the "
+            "Upper corner of the container's interior box in BASE mm (x, y, z). z is the rim, the "
             "height a finger may pass over from outside. Must exceed `interior_min_mm` on every axis."
         ),
     )
@@ -1577,11 +1556,11 @@ class GraspingContainerConfig(StrictModel):
             "Treat the four vertical walls of that interior box as collision geometry: they are "
             "sampled into points and appended to what the candidate filter already checks against. "
             "Separate from declaring the box so a cell can describe its bin without changing "
-            "grasping behaviour. FAIL-CLOSED: setting this without both interior corners raises at "
+            "grasping behaviour. Fail-closed: setting this without both interior corners raises at "
             "config load, because a cell that believes its walls are protected and is not is worse "
             "than one that knows they are not. False (default) = byte-identical.\n\n"
-            "MEASURED (354 jaw-graspable objects, D5 reference): top-1 55.9 -> 56.2 %, which is one "
-            "object on a run that is not bit-reproducible: FLAT. Do not turn this on expecting a "
+            "Measured (354 jaw-graspable objects, D5 reference): top-1 55.9 -> 56.2 %, which is one "
+            "object on a run that is not bit-reproducible, so flat. Do not turn this on expecting a "
             "better pick rate. What it does move: candidate precision 64.6 -> 80.7 %, and the `bin` "
             "family's ranking gap from 15 objects to 1 (to 0 with the fused neighbour cloud as "
             "well). It converts 'the ranker chose a grasp that hits the wall' into 'the ranker "
@@ -1594,7 +1573,7 @@ class GraspingContainerConfig(StrictModel):
         gt=0.0,
         le=100.0,
         description=(
-            "How far OUTWARD from each interior face the wall material is sampled. Sampling only the "
+            "How far outward from each interior face the wall material is sampled. Sampling only the "
             "inner face would leave a finger standing inside a thick wall undetected unless the "
             "collision margin happened to exceed half the thickness; that is a coincidence, not a "
             "check. A KLT is typically 3-8 mm."
@@ -1630,20 +1609,20 @@ class GraspingContainerConfig(StrictModel):
 
 
 class GraspingDeepGeneratorConfig(StrictModel):
-    """The learned 6-DoF grasp generator, the thing `grasping.calculator: deep` selects.
+    """The learned 6-DoF grasp generator, what `grasping.calculator: deep` selects.
 
-    Different from `deep_ranker` in the one way that matters: the ranker scores candidates the analytic
-    stack proposed and changes no order; this one proposes them instead of the analytic stack. There is
-    no shadow mode for a generator: either it is the source of candidates or it is not running.
+    Different from `deep_ranker` in the one way that matters: the ranker scores candidates the
+    analytic stack proposed and changes no order, this one proposes them instead of the analytic
+    stack. There is no shadow mode for a generator, either it is the source of candidates or it is
+    not running.
 
-    **It fails closed.** `calculator: deep` with no readable artifact refuses to build the cell rather
-    than falling back to `geometric`: a cell that asked for the learned generator and quietly got the
-    analytic one would file the analytic one's numbers under the learned one's name.
+    It fails closed. `calculator: deep` with no readable artifact refuses to build the cell rather
+    than falling back to `geometric`: a cell that asked for the learned generator and quietly got
+    the analytic one would file the analytic one's numbers under the learned one's name.
 
-    **The score it attaches is not a probability.** The v1 net has no calibrated P(hold) head,
-    deliberately: the corpus carries no physics until it is shaken, and `held_jaw_v1` already ranks
-    proposals at 0.8947 AUROC. Generator proposes, scorer ranks, and each is promoted on its own
-    evidence.
+    The score it attaches is not a probability. The v1 net has no calibrated P(hold) head: the
+    corpus carries no physics until it is shaken, and `held_jaw_v1` already ranks proposals at
+    0.8947 AUROC. Generator proposes, scorer ranks, and each is promoted on its own evidence.
     """
 
     artifact_path: str | None = Field(
@@ -1653,7 +1632,7 @@ class GraspingDeepGeneratorConfig(StrictModel):
             "`python -m src.robot.grasping.deep train`. The card beside it is committed; the "
             "weights are not, exactly as the ranker's trees are not. Null (default) means the "
             "learned generator cannot be selected; `calculator: deep` then refuses. "
-            "BOTH generator families are accepted here: a `grasp_generator` from "
+            "Both generator families are accepted here: a `grasp_generator` from "
             "`deep train` and a `set_grasp_generator` from `deep train-set`. The calculator "
             "branches on the artifact's own `kind`, so the file decides which decoder runs."
         ),
@@ -1665,11 +1644,8 @@ class GraspingDeepGeneratorConfig(StrictModel):
             "explicitly only by a cell that has a reason: a second GPU, or a deliberate CPU run."
         ),
     )
-    #: Which hand this cell actually has, and until 2026-09-04 there was no way to say it.
-    #: The runtime conditioned the generator on the artifact's own stamp, the hand the artifact was
-    #: written for, whatever gripper was bolted on, and said nothing about the difference. A model
-    #: fitted across `narrow_55`, `slim_pad` and `wide_140` therefore proposed for exactly one of
-    #: them forever, and measured on `arm_gripper` that choice is not cosmetic: mean proposed width
+    #: Which hand this cell has, for a model fitted across several (`narrow_55`, `slim_pad`,
+    #: `wide_140`). The choice is not cosmetic: measured on `arm_gripper`, mean proposed width
     #: is 32.69 mm for the 55 mm hand, 43.31 for 85 and 70.46 for 140.
     #:
     #: `None` keeps the artifact's stamp, so an existing cell is byte-identical. Naming a hand the
@@ -1687,7 +1663,7 @@ class GraspingDeepGeneratorConfig(StrictModel):
         default=0.5, ge=0.0, le=1.0,
         description=(
             "Points below this graspability score are never seeded. 0.5 is the natural threshold for "
-            "a CALIBRATED head and this head is not calibrated, so it is a knob rather than a "
+            "a calibrated head and this head is not calibrated, so it is a knob rather than a "
             "constant: the first real run is expected to move it once the score distribution has been "
             "looked at rather than assumed."
         ),
@@ -1697,26 +1673,24 @@ class GraspingDeepGeneratorConfig(StrictModel):
 class GraspingDeepRankerConfig(StrictModel):
     """The learned grasp ranker, in shadow: it computes, the telemetry records, the order never changes.
 
-    Measured before it was wired, on 1,611 (scene, view, object) units of `v1_proof`, out of fold and
-    grouped by object so no scored object was ever trained on:
+    Measured on 1,611 (scene, view, object) units of `v1_proof`, out of fold and grouped by object
+    so no scored object was ever trained on:
 
         random (expected)   54.4 %      the calculator's own order   51.6 %
         this ranker         84.1 %      best possible               100.0 %
 
-    "top-1 is valid": the first candidate physically closes. **Not** "the grasp holds": the label is
-    our own analytic verdict, and the pilot's hold rate is 5.62 % where validity there is 48.8 %. Those
-    are different questions and only a shake answers the second, which is why nothing here promotes
-    anything.
+    "top-1 is valid": the first candidate physically closes. Not "the grasp holds": the label is
+    the analytic verdict this stack computes, and the pilot's hold rate is 5.62 % where validity
+    there is 48.8 %. Those are different questions and only a shake answers the second, which is
+    why nothing here promotes anything.
 
-    **Shadow, and shadow for a measured reason.** The first ranker, fitted on aletheia's shaken
-    corpus, beat the calculator by 17.7 pp on the same units and still lost to picking at random,
-    because the failure it had to predict is `finger_collision` and its features could not see the
-    surroundings. A version that had acted would have acted wrongly. What this logs is
-    ``would_change_top1``: whether turning it on would do anything, answered on every real pick instead
-    of argued about.
+    Shadow, for a measured reason. A ranker fitted on aletheia's shaken corpus beat the calculator
+    by 17.7 pp on the same units and still lost to picking at random, because the failure it has to
+    predict is `finger_collision` and its features cannot see the surroundings. What this logs is
+    ``would_change_top1``: whether turning it on would do anything, answered on every real pick.
 
-    Enabling it adds telemetry keys and changes NO decision. That is deliberate and it is also what the
-    wiring guard checks: a flag whose runtime is unchanged fails, and telemetry IS the runtime here.
+    Enabling it adds telemetry keys and changes no decision. That is what the wiring guard checks: a
+    flag whose runtime is unchanged fails, and telemetry is the runtime here.
     """
 
     enabled: bool = Field(
@@ -1739,51 +1713,52 @@ class GraspingDeepRankerConfig(StrictModel):
             "Which feature contract to score under. Must match the artifact: the scorer refuses a "
             "mismatch rather than scoring a vector the model was never fitted on. Two ship: "
             "`held_jaw_v1` predicts whether Isaac's shake could not pull the object out, and "
-            "`valid_jaw_v1` predicts our own analytic verdict, which makes anything measured with it "
-            "self-referential. Measured 2026-08-24 on identical rows, folds and features with only "
-            "the target changed, both graded on held: 0.8947 against 0.7749 AUROC, and on the "
-            "`too_wide` stratum the valid-trained model scores 0.5220, a coin toss."
+            "`valid_jaw_v1` predicts this stack's own analytic verdict, which makes anything "
+            "measured with it self-referential. Measured on identical rows, folds and features "
+            "with only the target changed, both graded on held: 0.8947 against 0.7749 AUROC, "
+            "and on the `too_wide` stratum the valid-trained model scores 0.5220, a coin toss."
         ),
     )
 
 
 class GraspingSupportConfig(StrictModel):
-    """Where the surface is that the parts stand on, the input the table-clearance check never had.
+    """Where the surface is that the parts stand on, the input to the table-clearance check.
 
-    ``compute()`` has always accepted a ``support_plane`` and nothing ever passed one, so
-    ``collision_checker.py`` skipped the whole check: ``rejected_table`` was 0 in 2128 of 2128
-    telemetry lines while the independent reference rejected **37 %** of the same candidates for
-    driving a finger under the support. This block is what fills it.
+    ``compute()`` takes a ``support_plane`` and ``collision_checker.py`` skips the whole check
+    without one: with none passed, ``rejected_table`` was 0 in 2128 of 2128 telemetry lines while
+    the independent reference rejected 37 % of the same candidates for driving a finger under the
+    support. This block is what supplies it.
 
-    **The height is a declared number refined by what the cameras see, and the higher of the two wins.**
+    The height is a declared number refined by what the cameras see, and the higher of the two wins.
     That combination is measured, not chosen. Over 1073 reference objects:
 
     ======================  =========================  ===========================
     estimator               on the table (n=1052)      standing on something (n=21)
     ======================  =========================  ===========================
-    declared height alone   median +0.00, 0 % too low  median -14.08, **100 % too low**
+    declared height alone   median +0.00, 0 % too low  median -14.08, 100 % too low
     target footprint        median +1.81, 0 % too low  median +0.89, 0 % too low
     plane fit near the      median +19.97              median -1.19, 33 % too low
     object / whole scene    median +14.75              median +9.41, 33 % too low
     ======================  =========================  ===========================
 
-    A declared height cannot know that an object is standing on another object, and there it is too low
-    **every single time**. Both plane fits are worse still: they go too low on a third of the stacked
-    cases, which is the direction that breaks a gripper. The target's own lowest point was never too
-    low in any of the 1073 cases, so taking the higher of the two can only ever be conservative.
+    A declared height cannot know that an object is standing on another object, and there it is too
+    low every single time. Both plane fits are worse still: they go too low on a third of the
+    stacked cases, which is the direction that breaks a gripper. The target's own lowest point was
+    never too low in any of the 1073 cases, so taking the higher of the two can only ever be
+    conservative.
 
-    **The footprint is fused across cameras**, and that is also measured. A single view of a bin sees
+    The footprint is fused across cameras, and that is also measured. A single view of a bin sees
     the object over the wall, so its lowest visible point is the rim rather than the base: p90 error
-    **50.6 mm** in the ``bin`` family, 38 % of objects more than 10 mm too high. Taking the lowest point
-    over all cameras that identified the object cuts that to **13.3 mm** and 10.6 %, and stays at 0 %
+    50.6 mm in the ``bin`` family, 38 % of objects more than 10 mm too high. Taking the lowest point
+    over all cameras that identified the object cuts that to 13.3 mm and 10.6 %, and stays at 0 %
     too low everywhere. What one camera cannot see behind a wall, another can.
 
-    **Known limit, stated so it is not rediscovered.** Even fused, the footprint still reads high in a
-    bin (p90 13.3 mm against 1.7 mm in the open). Since the higher value wins, that costs some valid
-    low grasps in exactly the family that is already hardest. Declaring ``container.floor_height_mm``
-    does not fix it: the floor is the lower of the two and the fused estimate still wins. Closing it
-    needs either a fourth camera low enough to see the base, or a rule that recognises an estimate as
-    wall-occluded; the second is a candidate and has not been measured, so it is not implemented.
+    Known limit. Even fused, the footprint still reads high in a bin (p90 13.3 mm against 1.7 mm in
+    the open). Since the higher value wins, that costs some valid low grasps in exactly the family
+    that is already hardest. Declaring ``container.floor_height_mm`` does not fix it: the floor is
+    the lower of the two and the fused estimate still wins. Closing it needs either a fourth camera
+    low enough to see the base, or a rule that recognises an estimate as wall-occluded; the second
+    has not been measured, so it is not implemented.
     """
 
     height_mm: float = Field(
@@ -1804,7 +1779,7 @@ class GraspingSupportConfig(StrictModel):
         default=True,
         description=(
             "Raise the declared height to the target's own lowest fused point when that is higher: "
-            "the only way to know an object is standing on ANOTHER object. Never lowers it."
+            "the only way to know an object is standing on another object. Never lowers it."
         ),
     )
     container: GraspingContainerConfig = Field(
@@ -1816,12 +1791,11 @@ class GraspingSupportConfig(StrictModel):
         ge=0.0,
         le=200.0,
         description=(
-            "How far the gripper envelope must stay above the support surface. MEASURED, not chosen: "
+            "How far the gripper envelope must stay above the support surface. Measured, not chosen: "
             "swept 0 / 2 / 5 mm over the gate subset (n=354), the strictness is nearly free: "
-            "precision 18.87 -> 20.00 -> 22.08 %, coverage 28.81 -> 28.53 -> 28.53 %, "
-            "top-1 flat at "
+            "precision 18.87 -> 20.00 -> 22.08 %, coverage 28.81 -> 28.53 -> 28.53 %, top-1 flat at "
             "~24.3 % throughout. 5 mm buys 3.2 pp of precision for 0.28 pp of coverage, so it stays "
-            "the default and is the safer value on real hardware. Lowering it does NOT unlock flat "
+            "the default and is the safer value on real hardware. Lowering it does not unlock flat "
             "parts: with the 2F-85's 28.72 mm fingertip reach an object must be >= 33.72 mm tall for a "
             "top-down grasp to clear 5 mm even when the grasp sits on its very top edge, and 34.1 % "
             "of the reference objects are shorter than that. That is gripper geometry, not a "
@@ -1833,11 +1807,11 @@ class GraspingSupportConfig(StrictModel):
 class GraspingGeometryStageConfig(StrictModel):
     """Which geometry stage proposes grasp candidates.
 
-    ``support_footprint`` (the default since 2026-08-14) reconstructs the target as its visible
-    footprint extruded onto the calibrated support plane and then solves for an anchor height that
-    clears the surface. ``silhouette`` is the historical stage: it anchors on the visible surface and
-    lets the collision filter throw the result away, which cannot work when the constraint IS the
-    support surface: a filter can refuse, it cannot relocate a grasp.
+    ``support_footprint`` (the default) reconstructs the target as its visible footprint extruded
+    onto the calibrated support plane and then solves for an anchor height that clears the surface.
+    ``silhouette`` anchors on the visible surface and lets the collision filter throw the result
+    away, which cannot work when the constraint is the support surface: a filter can refuse, it
+    cannot relocate a grasp.
 
     Measured through the real calculator on the D5 gate subset (n=354), against ground-truth geometry:
 
@@ -1845,7 +1819,7 @@ class GraspingGeometryStageConfig(StrictModel):
     stage                  precision    top-1       coverage
     =====================  ===========  ==========  ==========
     silhouette             22.08 %      24.29 %     28.53 %
-    **support_footprint**  **63.59 %**  **43.50 %** **53.67 %**
+    support_footprint      63.59 %      43.50 %     53.67 %
     support_footprint      64.60 %      55.93 %     64.69 %
     + fused target cloud
     =====================  ===========  ==========  ==========
@@ -1855,16 +1829,16 @@ class GraspingGeometryStageConfig(StrictModel):
     three); on the full 270-scene set (n=152) the same stage measured 27.6 % against 14.5 %. The
     small-sample number is reported rather than dropped.
 
-    **It needs a BASE-frame support plane and a CAMERA->BASE transform.** Without both it cannot
-    place the table, so it does not run and the silhouette stage stands: a runner that builds the
-    service through ``from_components`` without a frame resolver gets the old behaviour and the
+    It needs a BASE-frame support plane and a CAMERA->BASE transform. Without both it cannot place
+    the table, so it does not run and the silhouette stage stands: a runner that builds the service
+    through ``from_components`` without a frame resolver gets the silhouette stage, and the
     ``geometry_stage`` telemetry key says which one ran.
     """
 
     stage: Literal["support_footprint", "silhouette"] = Field(
         default="support_footprint",
         description=(
-            "Which stage proposes candidates. 'silhouette' restores the pre-2026-08-14 behaviour."
+            "Which stage proposes candidates. 'silhouette' anchors on the visible surface instead."
         ),
     )
     inflate_mm: float = Field(
@@ -1873,7 +1847,7 @@ class GraspingGeometryStageConfig(StrictModel):
         le=50.0,
         description=(
             "Push every reconstructed face outward by this much. A depth image loses the grazing rim "
-            "of a curved surface, so the measured footprint is systematically SMALLER than the "
+            "of a curved surface, so the measured footprint is systematically smaller than the "
             "object and every consequence of that is one-sided (an under-estimated span, a finger "
             "that clips a flank on the way in). Non-zero biases the estimate in the safe direction. "
             "Default 0.0 = the measurement above, which was taken without it."
@@ -1885,9 +1859,9 @@ class GraspingGripperGeometryConfig(StrictModel):
     """Which gripper collision envelope the calculator filters grasp candidates against.
 
     ``kind`` picks the active model and the matching sub-block sizes it; ``outer_margin_mm`` inflates
-    whichever is chosen. Defaults reproduce the historically hardcoded parallel-jaw envelope
-    byte-for-byte, so leaving this unset changes nothing. Set ``kind: suction`` for a vacuum
-    end-effector so suction candidates are checked against a cup envelope, not a finger envelope.
+    whichever is chosen. Defaults reproduce the built-in parallel-jaw envelope byte-for-byte, so
+    leaving this unset changes nothing. Set ``kind: suction`` for a vacuum end-effector so
+    suction candidates are checked against a cup envelope, not a finger envelope.
     """
 
     kind: Literal["parallel_jaw", "suction"] = Field(default="parallel_jaw")
@@ -1904,13 +1878,13 @@ class RobotGraspingConfig(StrictModel):
     """Vendor-neutral grasping-behaviour surface.
 
     Sits as a sibling of :class:`RobotSafetyConfig` under :class:`RobotConfig`.
-    All knobs are *behavioural* (mode selection, closed-loop refinement,
+    All knobs are behavioural (mode selection, closed-loop refinement,
     verification, recovery, decision); safety remains exclusively under
     ``robot.safety``.
 
     The runtime derives per-mode behaviour from the
     :class:`src.robot.execution.autonomous_grasp.GraspBehaviorProfile`
-    table. Values here apply *on top* of that profile: they tighten or disable
+    table. Values here apply on top of that profile: they tighten or disable
     optional behaviour, but cannot relax safety limits or unlock recovery actions
     the mode profile forbids. ``default_mode`` is resolved against
     :class:`src.robot.grasping.types.modes.GraspMode` at use time so the config
@@ -1922,30 +1896,25 @@ class RobotGraspingConfig(StrictModel):
     default_mode: str = Field(default="auto", min_length=1)
     # Upper bound on autonomous attempts per pick() call.
     max_attempts: int = Field(default=5, ge=1, le=50)
-    #: Which grasp generator ranks the candidates. This is the seam the deep-learning arc adds; see
-    #: `src/robot/grasping/deep/` and `.ai-memory/dl-grasping-plan.md`.
+    #: Which grasp generator ranks the candidates. See `src/robot/grasping/deep/` and
+    #: `.ai-memory/dl-grasping-plan.md`.
     #:
-    #: ``geometric`` is the analytic stack that ships today: silhouette or support-footprint
-    #: candidate proposal, geometric scoring, the whole collision/IK/corridor tail.
+    #: ``geometric`` is the analytic stack: silhouette or support-footprint candidate proposal,
+    #: geometric scoring, the whole collision/IK/corridor tail.
     #:
     #: ``deep`` is the learned 6-DoF generator. It replaces the analytic proposal stage: the factory
     #: returns one generator or the other, and the deep decoder seeds only from its own graspability
-    #: head. The plan's eventual design has the analytic candidates enter as additional seeds through
-    #: a shared quality head; that is not what this key does today, and describing it that way is how
-    #: a missing filter tail gets under-rated. The deep path today has no rejection tail of its own:
-    #: the table check, the gripper-collision envelope, the antipodal test and the corridor filter all
-    #: live in the analytic generator, and extracting them into a stage both generators run is the open
-    #: build. The safety preflight is unaffected: it sits at the arm and gates the joint target
-    #: whatever proposed it, so a deep candidate meets exactly the same fail-closed guards.
+    #: head. The deep path has no rejection tail of its own; the table check, the gripper-collision
+    #: envelope, the antipodal test and the corridor filter all live in the analytic generator, and
+    #: extracting them into a stage both generators run is an open build. The safety preflight is
+    #: unaffected: it sits at the arm and gates the joint target whatever proposed it, so a deep
+    #: candidate meets exactly the same fail-closed guards.
     #:
-    #: A `Literal`, not a boolean, because "is deep learning on" stops being answerable the moment
-    #: there is a third generator, whereas a name per implementation does not.
-    #:
-    #: The default stays ``geometric`` until the learned one clears its pre-registered bar (beat
-    #: sfe_fused top-1 55.9 % on the eval-grasps ladder and on-box dense-gate parity). Selecting
-    #: ``deep`` without trained weights present fails closed with the artifact path in the message:
-    #: a cell must never quietly fall back to the other generator, because then "which one ran" is
-    #: unanswerable from the outside and every measurement after it is worthless.
+    #: The default stays ``geometric`` until the learned one clears its pre-registered bar: beat
+    #: sfe_fused top-1 55.9 % on the eval-grasps ladder, plus on-box dense-gate parity. Selecting
+    #: ``deep`` without trained weights present fails closed with the artifact path in the message,
+    #: so a cell can never quietly fall back to the other generator and leave "which one ran"
+    #: unanswerable from the outside.
     calculator: Literal["geometric", "deep"] = Field(
         default="geometric",
         description=(
@@ -1956,9 +1925,9 @@ class RobotGraspingConfig(StrictModel):
     )
     #: When a silhouette is near-isotropic its principal axis is numerically degenerate, so aim the jaw
     #: along the radial direction (base -> grasp) instead of following the noise. This is a property of
-    #: the ARM, not of the scene: measured on-box 2026-07-24, a UR3e real-vision (M2) cell goes
-    #: **5/10 -> 10/10** with it on (a vision-detected grasp has a varying azimuth, and a UR3e cannot
-    #: plan a tangential top-down close at any azimuth: 0/4 vs 4/4 radial). A UR5e absorbs both, so the
+    #: the arm, not of the scene: measured on-box, a UR3e real-vision (M2) cell goes 5/10 -> 10/10
+    #: with it on, because a vision-detected grasp has a varying azimuth and a UR3e cannot plan a
+    #: tangential top-down close at any azimuth (0/4 against 4/4 radial). A UR5e absorbs both, so the
     #: default stays False and only a cell that needs it declares it (robot.ur3e.yaml does).
     isotropic_radial_closing: bool = Field(default=False)
     record_log_path: str | None = Field(
@@ -2056,40 +2025,34 @@ class RobotGraspingConfig(StrictModel):
         ),
     )
 
-    #: Switches whose value reaches ``EffectiveGraspingConfig``, i.e. the cell's own telemetry,
-    #: and is then read back by nothing. Turning one on changes what the cell reports about itself
-    #: and not one thing about what it does.
+    #: Switches whose value reaches ``EffectiveGraspingConfig``, the cell's own telemetry, and is
+    #: then read back by nothing. Turning one on changes what the cell reports about itself and not
+    #: one thing about what it does.
     #:
-    #: Measured 2026-08-17 (17-run on-box campaign, see docs/grasping-config-reference.md section 6.1),
-    #: four ways: ``apply_orchestrator_overlays`` installs 13 carriers and none of these blocks is
-    #: among them; repo-wide nothing reads ``effective_config.feasibility`` / ``.corridor`` /
-    #: ``.ordering`` outside the file that writes them and the one that serialises them;
-    #: feasibility's real consumer is a ``GraspCalculator`` constructor argument that no caller
-    #: passes, not the sim runners, not ``real_cell/components.py``; and the positive control
-    #: (``success_model``, read at ``pick_loop.py:922``) has no equivalent line here.
+    #: Measured on-box four ways (see docs/grasping-config-reference.md section 6.1):
+    #: ``apply_orchestrator_overlays`` installs 13 carriers and none of these blocks is among them;
+    #: repo-wide nothing reads ``effective_config.feasibility`` / ``.corridor`` / ``.ordering``
+    #: outside the file that writes them and the one that serialises them; feasibility's real
+    #: consumer is a ``GraspCalculator`` constructor argument that no caller passes, not the sim
+    #: runners and not ``real_cell/components.py``; and the positive control (``success_model``,
+    #: read at ``pick_loop.py:922``) has no equivalent line here.
     #:
-    #: Why this refuses rather than warns. An operator who sets one of these gets a cell that
-    #: boots, runs, reports the flag as ON, and behaves exactly as before. That is the most
-    #: expensive failure mode this project has: not a crash, but a false sense of a capability.
-    #: The flags stay in the schema because the capability exists and is unit-tested; what is
+    #: It refuses rather than warns because an operator who sets one of these gets a cell that
+    #: boots, runs, reports the flag as on, and behaves exactly as before: not a crash, but a false
+    #: sense of a capability. The flags stay in the schema because the capability exists; what is
     #: missing is the wire from here to it. When one is wired, delete its entry and measure it.
     UNWIRED_SWITCHES: ClassVar[dict[str, str]] = {
-        # `feasibility.*` wired 2026-08-17: supplied per call from the orchestrator, not a
-        # constructor argument. See the on-box regression warning in builders.py before enabling it.
-        # `occlusion.directional_enabled` wired 2026-08-17: the corridor producer and its geometry
-        # now reach the calculator per call via the orchestrator. `hard_reject_enabled` stays:
-        # it is what lets the score refuse a candidate, and one run that moves both the ranking and
-        # the rejection answers neither. Wire it once the score itself is trusted.
+        # `hard_reject_enabled` is what lets the occlusion score refuse a candidate rather than
+        # only demote it, so it stays listed until the score itself is trusted: one run that moves
+        # both the ranking and the rejection answers neither. The blocks already wired reach the
+        # calculator per call from the orchestrator; see the on-box regression warning in
+        # builders.py before enabling feasibility.
         "occlusion.hard_reject_enabled": "occlusion",
-        # `ordering.*` wired 2026-08-17 and removed from this list. The orchestrator had carried a
-        # complete ordering path since T4 (`target_ordering` + the selector at pick_loop.py:1801);
-        # what was missing was the assignment in `apply_orchestrator_overlays`, which now maps the
-        # block onto `TargetOrderingConfig` field-for-field under its `apply_modes`.
     }
 
     @model_validator(mode="after")
     def _refuse_unwired_switches(self) -> "RobotGraspingConfig":
-        """Fail closed on a switch that would read as ON and do nothing."""
+        """Fail closed on a switch that would read as on and do nothing."""
 
         offenders: list[str] = []
         for path in self.UNWIRED_SWITCHES:
@@ -2105,8 +2068,8 @@ class RobotGraspingConfig(StrictModel):
             raise ValueError(
                 f"robot.grasping: {', '.join(offenders)} is set, but the "
                 f"{'block' if len(blocks) == 1 else 'blocks'} {', '.join(blocks)} "
-                "NEVER REACHES THE PICK PATH. The value lands in EffectiveGraspingConfig (the "
-                "cell's telemetry) and nothing reads it back, measured on-box 2026-08-17, see "
+                "never reaches the pick path. The value lands in EffectiveGraspingConfig (the "
+                "cell's telemetry) and nothing reads it back, measured on-box, see "
                 "docs/grasping-config-reference.md section 6.1. Enabling it would give you a cell that "
                 "reports the capability and does not have it. Set it back to false. "
                 "feasibility additionally carries a measured on-box regression "

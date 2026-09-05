@@ -1,28 +1,25 @@
 """Writing a measured value back into the config tree, without destroying the file it lands in.
 
-**Why this is narrow on purpose.** Three of the numbers this stack depends on cannot be read out of
-anything: payload mass, the flange-to-grasp-centre transform, and which physical camera is on which
-rig. They are measured by a person at a bench, with a scale, a caliper and ``rs-enumerate-devices``, and
-until someone types them in the cell refuses to run. That is the whole job here: take a bench
-measurement and put it where the loader will find it. It is not a config editor.
+Three of the numbers this stack depends on cannot be read out of anything: payload mass, the
+flange-to-grasp-centre transform, and which physical camera is on which rig. They are measured by a
+person at a bench, with a scale, a caliper and ``rs-enumerate-devices``, and until someone types them
+in the cell refuses to run. Taking such a measurement and putting it where the loader will find it is
+the whole job here. This is not a config editor.
 
-**What it refuses, and why that is the feature.** Only :data:`WRITABLE` may be written. Everything under
-``safety.*`` beyond the payload measurement, every workspace and motion limit, every threshold stays
-YAML-only, not because a machine could not write the line, but because those values live inside
-comments that carry the evidence for them (*"6/6 up to 6 mm and 0/6 at 10 mm"*), and a value changed
+Only :data:`WRITABLE` may be written. Everything under ``safety.*`` beyond the payload measurement,
+every workspace and motion limit and every threshold stays YAML-only, because those values live next
+to comments that carry the evidence for them ("6/6 up to 6 mm and 0/6 at 10 mm"), and a value changed
 without reading its comment is a value changed without knowing what it was for. The payload and the
-tool frame are the exception because they are **measurements, not policy**: nobody argues about what the
-gripper weighs.
+tool frame are the exception because they are measurements rather than policy.
 
-**Comments survive by construction.** Nothing here round-trips YAML: a ``safe_load``/``dump`` cycle
-would silently delete every comment in the file, which in this tree is most of the knowledge. The editor
-only ever rewrites the value on a single existing line, or inserts new lines; every other byte of the
-file is copied through untouched.
+Nothing here round-trips YAML: a ``safe_load``/``dump`` cycle would silently delete every comment in
+the file, which in this tree is most of the knowledge. The editor only ever rewrites the value on a
+single existing line, or inserts new lines; every other byte of the file is copied through untouched.
 
-**A bad edit cannot survive.** After writing, the whole tree is reloaded through the real loader and the
-real validators. If anything fails (a typo, a cross-field validator, a rejected enum, a bug in the
-line editor itself), the original file is restored and the validation error is returned. So the tree is
-never left in a state the loader would refuse, no matter what went wrong.
+After writing, the whole tree is reloaded through the real loader and the real validators. If
+anything fails (a typo, a cross-field validator, a rejected enum, a bug in the line editor itself),
+the original file is restored and the validation error is returned, so the tree is never left in a
+state the loader would refuse.
 """
 
 from __future__ import annotations
@@ -76,23 +73,23 @@ class Writable:
     #: What the operator physically does to obtain the number. The form shows this, not a type.
     measure: str
     unit: str = ""
-    #: Only offered for this ``robot.vendor``. Empty means every cell. Two entries exist purely
-    #: because the same fact, the controller's address, lives under a different key per vendor, and
-    #: showing an operator both would be showing them one field that does nothing.
+    #: Only offered for this ``robot.vendor``. Empty means every cell. The controller's address is
+    #: the same fact under a different key per vendor, so an operator is shown only the entry that
+    #: belongs to the cell in front of them.
     vendor: str = ""
     #: True for values that decide which machine moves or how it is driven, as opposed to what the tool
     #: weighs. Writable, but only with nothing connected; see :func:`set_keys`' ``connected`` guard.
     requires_disconnected: bool = False
 
 
-#: The complete writable set. Adding to it is a deliberate act: the reason each of these is here is that
-#: no API can answer it and the cell blocks until a human does.
+#: The complete writable set. A key belongs here only when no API can answer it and the cell blocks
+#: until a human does.
 WRITABLE: tuple[Writable, ...] = (
     Writable(
         path="robot.safety.payload.mass_kg",
         label="Payload mass",
         measure=(
-            "Weigh the WHOLE assembly on a bench scale: gripper plus coupling/adapter plate, every "
+            "Weigh the whole assembly on a bench scale: gripper plus coupling/adapter plate, every "
             "cable and hose that rides on the wrist, and any workpiece the arm carries. Not the "
             "gripper's datasheet mass."
         ),
@@ -148,7 +145,7 @@ WRITABLE: tuple[Writable, ...] = (
         measure=(
             "The controller's address on your network; read it off the pendant under Settings > "
             "Network. It is a fact about the cell, like a camera serial, which is why it is writable "
-            "here at all. It is also the one value that decides WHICH machine receives every motion, "
+            "here at all. It is also the one value that decides which machine receives every motion, "
             "so it cannot be changed while anything is connected."
         ),
         vendor="ur",
@@ -190,10 +187,10 @@ def _known(key: str) -> bool:
 def target_file(key: str, root: Path, layers: tuple[str, ...]) -> Path | None:
     """The file a write to ``key`` must land in, given the profile chain being run.
 
-    **The most specific layer wins, and that is where the measurement belongs.** A payload weighed on
-    the UR3e is a fact about the UR3e; writing it into the shared base file would hand the same number
-    to the UR5e and to the simulator. So the target is the overlay for the last active layer,
-    created if it does not exist yet, and only a chain with no layers at all writes the base file.
+    The target is the overlay for the last active layer, created if it does not exist yet; only a
+    chain with no layers at all writes the base file. The most specific layer is where a measurement
+    belongs: a payload weighed on the UR3e is a fact about the UR3e, and the shared base file would
+    hand the same number to the UR5e and to the simulator.
     """
     for base, _top, prefix in section_sources(root):
         stripped = re.sub(r"\[\d+\]", "", key)
@@ -382,38 +379,31 @@ def set_keys(
 ) -> WriteResult:
     """Write a group of measured values as one transaction: all of them land, or none do.
 
-    **The group is not a convenience, it is a correctness requirement.** The three ``tool_frame`` keys
-    are a single measurement and the schema knows it: declaring ``source: "willy"`` while the offset is
-    still identity is rejected, on the grounds that a grasp centre exactly at the flange face is the
-    shape of an unmeasured cell rather than a mounted tool. Written one at a time there is no order that
-    validates: the first write is always half a tool frame. So every file is edited, the tree is
+    The group is a correctness requirement, not a convenience. The three ``tool_frame`` keys are a
+    single measurement and the schema knows it: declaring ``source: "willy"`` while the offset is
+    still identity is rejected, because a grasp centre exactly at the flange face is the shape of an
+    unmeasured cell rather than a mounted tool. Written one at a time there is no order that
+    validates, since the first write is always half a tool frame. So every file is edited, the tree is
     reloaded once, and on any failure every file is restored to the bytes it had.
 
     ``profile`` is the chain string the reload runs under; ``layers`` is the same chain split, used to
     pick the target files.
 
-    **``layers`` and ``profile`` must describe the same chain.** Passing both because the caller
-    holds both is what lets them disagree; deriving one from the other is what stops it. They are
-    checked against each other before anything is written, and `ConfigTree.write()` derives them
-    from one chain so the disagreeing call cannot be constructed at all.
+    ``layers`` and ``profile`` must describe the same chain, and are checked against each other before
+    anything is written: ``layers`` picks the file a value lands in and ``profile`` picks the tree that
+    then has to validate, so a disagreement lands a write in a file the validation never reads.
+    `ConfigTree.write()` derives both from one chain, so the disagreeing call cannot be constructed
+    there at all.
     """
-    # **the two arguments this docstring warns about must now agree, and it is checked.**
-    # Measured 2026-09-04 on a scratchpad copy of the shipped tree:
+    # A mismatched pair, such as layers=("ur3e",) with profile=None, writes into the layer file but
+    # validates the base tree: no rollback fires, the read-back reports the base tree's value rather
+    # than the one written, and the tree is left unloadable under its own layer while the call
+    # reports success.
     #
-    #     set_key("robot.safety.payload.mass_kg", 3.25, root=T, layers=("ur3e",), profile=None)
-    #       -> applied=True, refused=None, values={"robot.safety.payload.mass_kg": 0.0}
-    #
-    # It picked the target file from layers[-1] and wrote `mass_kg: 3.25` into robot.ur3e.yaml
-    # directly beneath a `max_mass_kg: 3.0` that forbids it, then validated the BASE tree because
-    # `profile` said None, so no rollback fired. It reported success, read back the base tree's 0.0
-    # rather than the value it had written, and left the tree unloadable under its own layer, against
-    # this module's promise at the top of the file that exactly that cannot happen.
-    #
-    # Raised, not returned as a `WriteRefused`. Every member of that enum is something an
-    # operator did; this is something a caller did, and it cannot be reached through any UI. Handing
-    # it back as a refusal would put a programming error in front of a person who cannot act on it.
-    # `ConfigTree.write()` makes it unconstructible, which is the real fix; this is the guard for the
-    # raw function that other callers still reach.
+    # Raised, not returned as a `WriteRefused`. Every member of that enum is something an operator
+    # did; this is something a caller did, and it cannot be reached through any UI. Handing it back
+    # as a refusal would put a programming error in front of a person who cannot act on it. This is
+    # the guard for the raw function; `ConfigTree.write()` makes the call unconstructible instead.
     from .loader import profile_layers  # noqa: PLC0415
 
     if tuple(profile_layers(profile)) != tuple(layers):
@@ -522,47 +512,42 @@ def set_key(
 
 
 def _reload(root: Path, profile: str | None) -> Any:
-    """Load the tree exactly as a runner would, under ``profile``. Raises on anything the loader hates."""
+    """Load the tree exactly as a runner would, under ``profile``. Raises on anything the loader rejects."""
     from .loader import load_config, reload_config  # noqa: PLC0415
 
-    # The chain is an argument now. This used to set WILLY_PROFILE, call `reload_config()` to
-    # make the change take, load, then restore and reload again, so validating one write cleared
-    # the cached tree of every other holder in the process, twice, whether or not anything went
-    # wrong. `load_config(root, profile=...)` needs neither, because the cache is keyed per chain:
-    # two profiles are two entries, not one entry fought over. This was the last library-code site
-    # in this package that mutated the environment to ask a question.
+    # The chain is passed to `load_config`, never through WILLY_PROFILE: the cache is keyed per
+    # chain, so two profiles are two entries rather than one entry fought over, and no other holder
+    # in the process loses its tree because a write was validated.
     #
-    # One `reload_config()` stays, and it is load-bearing rather than leftover: this function
-    # runs after bytes have been written to disk, and the cache would otherwise hand back the tree as
-    # it was before the edit, so a validating reload would validate the old file.
+    # The `reload_config()` is load-bearing. This function runs after bytes have been written to
+    # disk, and the cache would otherwise hand back the tree as it was before the edit, so the
+    # validating load would validate the old file.
     reload_config()
     return load_config(root, profile=profile)
 
 
 #: Returned by :func:`read_key` for a path that does not exist. Distinct from ``None``, which is a
-#: perfectly good value here: an unconfigured ``serial_number`` IS ``null``, and reporting that as
-#: "missing" would tell an operator their write vanished when it landed exactly as asked.
+#: real value here: an unconfigured ``serial_number`` is ``null``, and reporting that as "missing"
+#: would tell an operator their write vanished when it landed exactly as asked.
 #:
-#: Not :data:`~src.contracts.UNSET`, and the difference is not pedantry. That sentinel
-#: means "the caller did not choose this", which is a question about an argument. This one means
-#: "the tree does not have this path", which is a question about a lookup. One name for both would
-#: read as an answer to whichever question the reader had in mind.
+#: Not :data:`~src.contracts.UNSET`. That sentinel means "the caller did not choose this", a
+#: question about an argument; this one means "the tree does not have this path", a question about a
+#: lookup.
 MISSING = object()
 
 
 def read_key(cfg: Any, key: str) -> Any:
     """The value the tree holds for ``key``, or :data:`MISSING` if the path does not exist.
 
-    **Public, and it has to be.** `api/routers/config.py` and `src/config/__main__.py` both need this
-    walker and the sentinel; a private name leaves one of them carrying a walker of its own that
-    returns ``None`` for both "missing" and "the value is None".
+    Public together with the sentinel because `explain.py` reads both across the module boundary; a
+    caller that cannot reach them carries a walker of its own that returns ``None`` for both
+    "missing" and "the value is None".
 
-    Measured on the default tree: 45 of 468 keys hold ``None``. For each of them a walker that
-    conflates "missing" with "the value is None" prints ``camera.cameras.active_rig_id``, where
-    this one prints ``camera.cameras.active_rig_id = None``. Same key, two answers, from a pair of callers
-    that `KeyExplanation` is split out to keep in step (see `explain.py:99-106`). The drift does not
-    happen inside the class; it happens one layer above it, in what the two callers can find out
-    before calling.
+    On the default tree 45 of 468 keys hold ``None``. For each of them a walker that conflates the
+    two prints ``camera.cameras.active_rig_id``, where this one prints
+    ``camera.cameras.active_rig_id = None``: the same key with two answers, from the pair of callers
+    that `KeyExplanation` (`explain.py`) is split out to keep in step. That drift happens one layer
+    above the class, in what the two callers can find out before calling it.
 
     Handles ``[index]`` segments.
     """

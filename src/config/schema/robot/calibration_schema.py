@@ -1,4 +1,4 @@
-"""Hand-eye calibration config schema (R7.1 split from robot_schema.py)."""
+"""Hand-eye calibration config schema."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from .._base import StrictModel
 class RobotCalibrationQualityBandsMm(StrictModel):
     """RMSE thresholds (mm) that classify a hand-eye calibration result.
 
-    Boundaries are *inclusive* upper bounds, so a value of exactly
+    Boundaries are inclusive upper bounds, so a value of exactly
     ``good`` falls into the "good" band, not "marginal".
     """
 
@@ -34,20 +34,17 @@ class RobotCalibrationQualityBandsMm(StrictModel):
 class RobotCalibrationConfig(StrictModel):
     """Tunable parameters for the hand-eye calibration routine.
 
-    Two keys this block deliberately does not offer, because a config key that claims to protect you
-    and does not is worse than no key at all:
+    Two keys this block does not offer:
 
-    * ``quality_threshold_mm``, which would be an auto-apply gate on the RMSE, holding a result
-      above it for operator review. No such gate exists anywhere: ``save_extrinsics`` writes
-      whatever it is given, judging the RMSE is the operator's job, and :data:`quality_bands_mm`
-      labels it. Measured: the only reader of the key in the whole repository was this class's
-      own cross-field validator, a rule validating a dead key against a live one.
-    * ``speed_scale``, which would scale arm speed during the routine and restore it on exit.
-      There is no speed governor; ``robot.motion_limits`` is what the driver layer actually
-      enforces, and the routine takes a ``motion_limits=`` argument.
+    * ``quality_threshold_mm``, an auto-apply gate on the RMSE that would hold a result above it
+      for operator review. No such gate exists: ``save_extrinsics`` writes whatever it is given,
+      judging the RMSE is the operator's job, and :data:`quality_bands_mm` labels it.
+    * ``speed_scale``, an arm-speed scale for the duration of the routine. There is no speed
+      governor; ``robot.motion_limits`` is what the driver layer enforces, and the routine takes
+      a ``motion_limits=`` argument.
 
-    ``quality_bands_mm`` below is the opposite case: both calibration runners pass it straight into
-    :func:`src.calibration.quality.classify_rmse`.
+    ``quality_bands_mm`` is the opposite case: both calibration runners (``run_eth_calibrate.py``,
+    ``run_eih_calibrate.py``) pass it straight into :func:`src.calibration.quality.classify_rmse`.
     """
 
     # Mechanical settle time after each pose move, before image capture.
@@ -59,23 +56,21 @@ class RobotCalibrationConfig(StrictModel):
     # Pose-generator retry budget per pose before giving up.
     max_attempts_per_pose: int = Field(default=200, ge=1)
 
-    #: ETH pose-generator z band per MARKER source (``"ground_truth"`` / ``"aruco"``), as ``(lo, hi)``
+    #: ETH pose-generator z band per marker source (``"ground_truth"`` / ``"aruco"``), as ``(lo, hi)``
     #: fractions of ``workspace_limits.z_max``. An absent key keeps that source's shipped default
-    #: (ground-truth: the full box; ArUco: 0.55-0.75, the band that holds the tool marker inside the
+    #: (ground truth: the full box; ArUco: 0.55-0.75, the band that holds the tool marker inside the
     #: narrow overhead FOV).
     #:
-    #: It is keyed by source because measurement says the two sources want opposite things, and a single
-    #: value would fix one while breaking the other. On-box 2026-07-24, UR3e, each figure reproduced:
+    #: Keyed by source because the two sources want opposite bands, so a single value fixes one and
+    #: breaks the other. On a UR3e, ArUco collects 11/22 samples at 0.55-0.75 (rmse 6.44 mm) and 1/22
+    #: at 0.5-0.9 (21 status=timeout), while ground truth collects 9/22 at 0.5-0.9 (rmse 0.0000 mm)
+    #: and 4/22 on the full box (16 status=timeout), too few to solve. A UR5e needs neither band: it
+    #: collects 17/22 on the full box and solves exactly, so the default is None and a cell that sets
+    #: no key keeps the shipped behaviour.
     #:
-    #:   ground_truth  full box      4/22 samples, 16x status=timeout, too few to solve
-    #:   ground_truth  0.5-0.9       9/22 samples, rmse 0.0000 mm, quality excellent, gate pass
-    #:   aruco         0.55-0.75    11/22 samples, rmse 6.44 mm, quality poor
-    #:   aruco         0.5-0.9       1/22 samples, 21x status=timeout   <- the same band that fixes GT
-    #:
-    #: (A UR5e needs neither: it collects 17/22 on the full box and solves exactly. So the default is
-    #: None and every existing cell is untouched.) The pose box is the sampler's range, not a
-    #: filter: moving one bound re-draws every pose, so a narrower band is not a safer band.
-    #: ``run_eth_calibrate --z-frac LO,HI`` overrides it for a one-off experiment.
+    #: The pose box is the sampler's range, not a filter: moving one bound re-draws every pose, so a
+    #: narrower band is not a safer band. ``run_eth_calibrate --z-frac LO,HI`` overrides it for a
+    #: one-off experiment.
     pose_box_z_frac: dict[str, tuple[float, float]] | None = None
 
     #: The only marker sources a pose box can be keyed by: the same fixed set ``run_eth_calibrate``
@@ -86,10 +81,10 @@ class RobotCalibrationConfig(StrictModel):
     def _check_pose_box_z_frac(self) -> "RobotCalibrationConfig":
         """Refuse the three ways this field can be silently wrong.
 
-        Unchecked, a typo'd key, an inverted band and out-of-range fractions are all accepted. The
-        typo is the worst of the three: ``{"typo_source": [0.5, 0.9]}`` validates, the runner's
+        Unchecked, a typo'd key, an inverted band and out-of-range fractions are all accepted. A
+        typo'd key is the silent one: ``{"typo_source": [0.5, 0.9]}`` validates, the runner's
         ``.get(marker)`` then returns ``None``, the shipped default applies, and the operator's
-        setting has vanished without a word.
+        setting is gone without a word.
         """
         if self.pose_box_z_frac is None:
             return self
@@ -104,16 +99,13 @@ class RobotCalibrationConfig(StrictModel):
             if not (0.0 <= lo < hi <= 1.0):
                 raise ValueError(
                     f"calibration.pose_box_z_frac[{key!r}] = ({lo}, {hi}) is not a band. It is read as "
-                    f"FRACTIONS of workspace_limits.z_max, so it needs 0 <= lo < hi <= 1; an inverted "
+                    f"fractions of workspace_limits.z_max, so it needs 0 <= lo < hi <= 1; an inverted "
                     f"pair would produce z_min > z_max and the pose generator would sample nothing."
                 )
         return self
 
-    #: Consumed for real: both calibration runners classify their result with it via
-    #: ``classify_rmse(result.rmse_mm, cast(QualityBandsMm, cfg.calibration.quality_bands_mm))``
-    #: (``run_eth_calibrate.py:191``, ``run_eih_calibrate.py:162``). Structurally identical to
-    #: :class:`src.calibration.quality.QualityBandsMm`; the config layer redeclares it rather
-    #: than importing it, because config must not depend on the source tree.
+    #: Structurally identical to :class:`src.calibration.quality.QualityBandsMm`; the config layer
+    #: redeclares it rather than importing it, because config must not depend on the source tree.
     quality_bands_mm: RobotCalibrationQualityBandsMm = Field(
         default_factory=RobotCalibrationQualityBandsMm
     )

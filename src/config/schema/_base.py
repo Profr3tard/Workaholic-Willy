@@ -39,9 +39,9 @@ class StrictModel(BaseModel):
 # Reusable validators
 # ---------------------------------------------------------------------------
 
-# Known OpenCV ArUco dictionary names. We hard-code the list rather than
-# poking at ``cv2.aruco`` so that schema validation does not require OpenCV
-# to be importable during config introspection (e.g. doc generation).
+# Known OpenCV ArUco dictionary names, listed here rather than read from
+# ``cv2.aruco`` so that schema validation does not require OpenCV to be
+# importable during config introspection such as doc generation.
 _ARUCO_DICT_NAMES: frozenset[str] = frozenset(
     {
         # Standard

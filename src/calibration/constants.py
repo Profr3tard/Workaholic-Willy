@@ -1,8 +1,5 @@
-"""Shared constants for the calibration package.
-
-Centralising log paths here avoids the magic-string drift that creeps in
-when the same directory is referenced by every solver and persistence
-helper.
+"""Shared constants for the calibration package: the log directory and the
+per-module log file names every solver and persistence helper writes to.
 """
 
 from __future__ import annotations
@@ -17,11 +14,9 @@ from typing import Final
 #: :func:`src.utility.log_cfg.create_logger`.
 CALIBRATION_LOG_DIR: Final[str] = "logs/calibration"
 
-#: Per-module log-file names. Kept separate (rather than the aggregate
-#: single-file pattern used by the robot package) because a calibration
-#: session touches exactly one of these workflows at a time, eye-hand or
-#: stereo, and the question afterwards is always "what did that solve see?".
-#: A run is a handful of lines per file, so one file per module stays greppable.
+#: Per-module log-file names, one file per module rather than the aggregate
+#: single file the robot package uses: a session touches one workflow at a
+#: time, eye-hand or stereo, and a run is a handful of lines per file.
 EYE_HAND_CALIBRATOR_LOG_FILE: Final[str] = "eye_hand_calibrator.log"
 EYE_HAND_DATASET_LOG_FILE: Final[str] = "eye_hand_dataset.log"
 SERIALIZATION_LOG_FILE: Final[str] = "serialization.log"

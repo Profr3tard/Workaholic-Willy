@@ -1,7 +1,7 @@
 """
 Quality bands for calibration results.
 
-A *band* maps a scalar error metric (RMSE) onto one of five labels:
+A band maps a scalar error metric (RMSE) onto one of five labels:
 
     ``excellent`` < ``good`` < ``marginal`` < ``poor``  (+ ``unknown``)
 
@@ -12,19 +12,18 @@ Bands are vendor-neutral. Each callsite chooses the appropriate
 * the hand-eye routines report ``HandEyeAXXB._residual_rmse``, the mean
   Frobenius norm ``mean ||A_i X - X B_i||_F``. That norm mixes the
   dimensionless rotation block with millimetre translation terms and scales
-  with ``|t_X|``, so it is a self-consistency score, not a distance. This
-  docstring used to call it "translational RMSE in millimetres", which
-  invites reading 2.5 as "2.5 mm of error", which it is not.
-  Measured on an exact, noise-free synthetic problem
-  (``docs/guide/snippets/rmse_sensitivity.py``): at ``|t_X| = 1096 mm`` a
-  1-degree rotation error scores 7-12x worse than a 1 mm translation error.
+  with ``|t_X|``, so it is a self-consistency score and not a distance: a
+  value of 2.5 does not mean 2.5 mm of error. On an exact, noise-free
+  synthetic problem (``docs/guide/snippets/rmse_sensitivity.py``) at
+  ``|t_X| = 1096 mm``, a 1-degree rotation error scores 7-12x worse than a
+  1 mm translation error.
 
-The bands therefore classify *consistency*, which is what they are good for:
-they say whether the solve agrees with itself, not how far off the camera is.
+The bands therefore classify consistency: whether the solve agrees with
+itself, not how far off the camera is.
 
-The dataclasses are immutable so they can be safely shared across
-threads. ``__post_init__`` enforces strict monotonicity, which is the
-only guarantee callers rely on when classifying.
+The dataclasses are immutable so they can be shared across threads.
+``__post_init__`` enforces strict monotonicity, the only guarantee callers
+rely on when classifying.
 """
 
 from __future__ import annotations
@@ -102,9 +101,8 @@ def classify_rmse(
 ) -> QualityLabel:
     """Map an RMSE value onto a :data:`QualityLabel`.
 
-    ``None`` and non-finite inputs map to ``"unknown"``. Negative values
-    are also treated as ``"unknown"`` rather than silently classifying
-    as ``"excellent"``.
+    ``None``, non-finite and negative inputs map to ``"unknown"``; a negative
+    value would otherwise classify as ``"excellent"``.
     """
     if value is None:
         return "unknown"

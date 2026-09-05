@@ -1,18 +1,16 @@
 """3D reconstruction from rectified stereo + disparity.
 
-Public API is unchanged. Internally:
+``depth_map`` takes ``Z`` straight from the Q matrix,
+``Z = Q[2,3] / (Q[3,2]*d + Q[3,3])``, rather than through
+``cv.reprojectImageTo3D``, which allocates a full ``(H, W, 3)`` float32 buffer
+to keep one plane: same numerical result, ~2x faster, one third of the memory
+traffic.
 
-* ``depth_map`` no longer goes through ``cv.reprojectImageTo3D`` (which
-  allocates a full ``(H, W, 3)`` float32 buffer just to keep the Z plane).
-  Instead it derives ``Z`` directly from the Q-matrix:
-  ``Z = Q[2,3] / (Q[3,2]*d + Q[3,3])``: the same numerical result, ~2x faster
-  and one third of the memory traffic.
+``representative_point`` applies Q to the one pixel through ``_project_pixel``;
+``representative_point_mask`` reduces over the full ``reproject`` output.
 
-* ``representative_point`` shares a single ``_project_pixel`` helper with
-  ``representative_point_mask`` so the maths only lives in one place.
-
-* ``W ~= 0`` (singular reprojection) yields ``NaN`` rather than raising,
-  matching the rest of the disparity pipeline's "missing data" convention.
+Missing data is ``NaN`` throughout, the convention of the disparity pipeline.
+A singular reprojection (``W ~= 0``) yields ``NaN`` rather than raising.
 """
 
 from __future__ import annotations
@@ -37,15 +35,14 @@ class PointCloudReconstructor:
             raise StereoCalibrationError(f"Q must have shape (4, 4), got {self.Q.shape}")
         if not np.all(np.isfinite(self.Q)):
             raise StereoCalibrationError("Q must contain only finite values")
-        # Pre-extract the Q rows we need for the fast Z-only path:
-        #   Z(d) = q23 / (q32 * d + q33)
-        # See cv.stereoRectify documentation for the full Q layout.
+        # The Q entries of the Z-only path, Z(d) = q23 / (q32 * d + q33).
+        # cv.stereoRectify documents the full Q layout.
         self._q23 = float(self.Q[2, 3])
         self._q32 = float(self.Q[3, 2])
         self._q33 = float(self.Q[3, 3])
 
     # ------------------------------------------------------------------
-    # Full 3D reprojection (kept for callers that need (H, W, 3))
+    # Full 3D reprojection, for callers that need (H, W, 3)
     # ------------------------------------------------------------------
     def reproject(self, disparity_px: np.ndarray) -> np.ndarray:
         """Reproject a disparity map into 3D points using Q.
@@ -78,7 +75,8 @@ class PointCloudReconstructor:
 
         # Z = q23 / (q32 * d + q33). NaN propagates through the divisions.
         denom = self._q32 * disp + self._q33
-        # Avoid division by exact zero (extremely rare with real disparities).
+        # An exact-zero denominator, rare with real disparities, divides to
+        # infinity here instead of warning.
         with np.errstate(divide="ignore", invalid="ignore"):
             Z_mm = self._q23 / denom
         Z_mm[~valid] = np.nan

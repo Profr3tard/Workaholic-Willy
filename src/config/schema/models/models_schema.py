@@ -12,25 +12,24 @@ from .._base import StrictModel
 class InferenceOptimization(StrictModel):
     """Optional inference-time optimizations for torch-based models.
 
-    Defaults are conservative so behaviour matches the pre-optimization
-    code exactly until a config explicitly opts in. Production configs
-    should typically enable ``torch_dtype="auto"`` and
-    ``attn_implementation="sdpa"`` on CUDA hosts.
+    Defaults are conservative: nothing here changes how a model runs
+    until a config opts in. On CUDA hosts ``torch_dtype="auto"`` and
+    ``attn_implementation="sdpa"`` are the usual production settings.
 
     Fields:
         torch_dtype:
             ``"auto"`` (fp16 on CUDA, fp32 elsewhere), ``"float16"``,
-            ``"bfloat16"``, ``"float32"`` or ``None`` (= fp32, legacy).
+            ``"bfloat16"``, ``"float32"`` or ``None`` (= fp32).
         attn_implementation:
             Forwarded to ``from_pretrained``. ``"sdpa"`` is a safe fast
             default on CUDA. ``None`` keeps the HF default.
         channels_last:
-            Use channels-last memory format for vision models. Faster on
+            Channels-last memory format for vision models. Faster on
             Ampere+ GPUs, no-op on CPU.
         compile:
-            Wrap the model with ``torch.compile``. Significant speed-up
-            on stable input shapes but adds warm-up time and can fail on
-            some HF architectures, hence opt-in.
+            Wrap the model with ``torch.compile``. A speed-up on stable
+            input shapes, but it adds warm-up time and can fail on some
+            HF architectures, hence off by default.
         compile_mode:
             Mode forwarded to ``torch.compile``.
     """
@@ -57,7 +56,7 @@ class ObjectDetectorConfig(StrictModel):
 
 
 class SegmenterConfig(StrictModel):
-    """Image segmentation (e.g. Sam2) configuration."""
+    """Image segmentation (e.g. SAM2) configuration."""
 
     model_path: str
     model_id: str | None = None
@@ -71,11 +70,10 @@ class OneFormerConfig(StrictModel):
     model_path: str
     model_id: str | None = None
     local: bool
-    #: Narrowed to ``instance`` because that is the only mode the wrapper implements: it always calls
-    #: ``post_process_instance_segmentation``, so a config asking for ``semantic`` or ``panoptic`` used
-    #: to validate cleanly and then silently run instance segmentation anyway. Advertising a capability
-    #: the code does not have is worse than not offering it; widen this the day the post-processing
-    #: exists, not before.
+    #: ``instance`` is the only mode the wrapper implements: it always calls
+    #: ``post_process_instance_segmentation``. Accepting ``semantic`` or ``panoptic`` here would
+    #: validate cleanly and then silently run instance segmentation, so widen this only once the
+    #: post-processing exists.
     task: Literal["instance"] = "instance"
     optim: InferenceOptimization = Field(default_factory=InferenceOptimization)
 
@@ -86,8 +84,8 @@ class SpeechToTextConfig(StrictModel):
     model_id: str
     model_path: str
     samplerate: int
-    # Read wholesale by `WhisperSpeechToText.__init__`, which takes the block, not a path:
-    # the reason the dead-key trace first mis-read these four as unread.
+    # The four below are read by `WhisperSpeechToText.__init__`, which takes the whole block rather
+    # than a key path, so no call site names them individually.
     blocksize: int
     channels: int
     dtype: str
@@ -118,10 +116,9 @@ class HandDetectConfig(StrictModel):
     #: https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task
     model_path: str = "assets/models/mediapipe/hand_landmarker.task"
 
-    #: Upper bound on simultaneously tracked hands -> ``num_hands``. Note that the 3-D
-    #: :class:`~src.models.handdetection.hand_finder.HandFinder` refuses a frame with more
-    #: than one hand regardless: two hands in a workspace is a reason to stop, not to choose one.
-    #: Keeping this at 2 is what lets it see the second hand in order to refuse.
+    #: Upper bound on simultaneously tracked hands -> ``num_hands``. The 3-D
+    #: :class:`~src.models.handdetection.hand_finder.HandFinder` refuses a frame with more than one
+    #: hand regardless, so 2 is what lets it see the second hand in order to refuse.
     max_hands: int = Field(default=2, ge=1, le=4)
 
     #: Minimum hand-detection confidence -> ``min_hand_detection_confidence``.
@@ -138,8 +135,8 @@ class HandDetectConfig(StrictModel):
     presence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
     #: Radius, in pixels, of the disc around the palm centre whose median depth becomes the hand's
-    #: distance. Ours, not MediaPipe's. Too small and a depth dropout on skin loses the hand; too
-    #: large and the disc starts averaging in whatever is behind the hand.
+    #: distance. Not a MediaPipe parameter. Too small and a depth dropout on skin loses the hand;
+    #: too large and the disc starts averaging in whatever is behind the hand.
     palm_patch_radius_px: int = Field(default=15, ge=1, le=200)
 
     #: How many valid depth pixels that disc must contain before its median is believed. A median
@@ -176,7 +173,7 @@ class GestureDetectConfig(StrictModel):
     presence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
     #: The score a thumbs-up must reach to be reported as one. Passed to MediaPipe as the canned
-    #: classifier's ``score_threshold`` and re-checked on our side, so a below-threshold thumbs-up
+    #: classifier's ``score_threshold`` and re-checked afterwards, so a below-threshold thumbs-up
     #: becomes ``NONE`` rather than a low-confidence confirmation. Raise it where a false
     #: confirmation is expensive.
     min_gesture_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -189,9 +186,8 @@ class GestureDetectConfig(StrictModel):
 class VlmConfig(StrictModel):
     """The vision-language model that grounds a complex prompt.
 
-    **VRAM is the constraint that decides this block**, and the numbers belong in the README next to
-    the choice, not in someone's head. The model runs alongside sam2 and (in simulation) Isaac's own
-    renderer on the same card.
+    VRAM is the constraint on this block: the model runs alongside sam2 and, in simulation, Isaac's
+    own renderer on the same card. The per-checkpoint figures are in the package README.
     """
 
     #: A released Qwen3-VL-Instruct checkpoint. The paper's Qwen3-VL-Seg (arXiv 2605.07141) publishes
@@ -207,12 +203,11 @@ class VlmConfig(StrictModel):
     #: What to do when the VLM cannot be loaded on this cell: weights missing, dependency absent, or
     #: not enough VRAM.
     #:
-    #: ``refuse``  the pick is rejected with a typed reason. The default, because the failure this
-    #:             whole route exists to prevent is exactly what falling back would produce:
-    #:             GroundingDINO does not fail on a complex prompt, it confidently grounds the wrong
-    #:             object, and a wrong grasp is worse than a refused one.
-    #: ``degrade`` fall back to the simple route, with a warning stamped into the event stream and the
-    #:             grasp record so the weaker grounding is visible afterwards.
+    #: ``refuse``  the pick is rejected with a typed reason. The default: GroundingDINO does not
+    #:             fail on a complex prompt, it confidently grounds the wrong object, so falling
+    #:             back produces a wrong grasp rather than a refused one.
+    #: ``degrade`` fall back to the simple route, with a warning stamped into the event stream and
+    #:             the grasp record so the weaker grounding is visible afterwards.
     on_unavailable: Literal["refuse", "degrade"] = "refuse"
 
 
@@ -220,14 +215,14 @@ class PromptRouterConfig(StrictModel):
     """Deciding which route a prompt takes.
 
     Rule-based and deterministic: a prompt's complexity is read off its structure (attribute count,
-    relative clauses, negation, quantifiers) and its language. A cheap-first cascade is deliberately
-    Not the design: it only works when the cheap stage fails loudly, and this one does not.
+    relative clauses, negation, quantifiers) and its language. Not a cheap-first cascade: that needs
+    the cheap stage to fail loudly, and the phrase grounder does not.
     """
 
     enabled: bool = True
     #: A non-English prompt routes to the VLM regardless of complexity. GroundingDINO is effectively
     #: English-only, and Whisper's German->English translation covers the spoken path only: a typed
-    #: German prompt reaches the detector untranslated today.
+    #: German prompt reaches the detector untranslated.
     route_non_english_to_vlm: bool = True
 
 
@@ -236,9 +231,8 @@ class ZeroShotPipelineConfig(StrictModel):
 
     #: ``grounded_sam`` = GroundingDINO + a segmenter. ``vlm`` = the VLM grounds, sam2 cuts.
     backend: Literal["grounded_sam", "vlm"] = "grounded_sam"
-    #: Only consulted for ``grounded_sam``; the VLM route always cuts with sam2, because there is no
-    #: second mask source to choose between yet. Offering a knob with one legal value would be
-    #: pretending otherwise.
+    #: Only consulted for ``grounded_sam``; the VLM route always cuts with sam2, having no second
+    #: mask source to choose between.
     segmenter: Literal["sam2", "oneformer"] = "sam2"
     vlm: VlmConfig = Field(default_factory=VlmConfig)
 
@@ -252,13 +246,9 @@ class ClosedSetPipelineConfig(StrictModel):
 class PipelineConfig(StrictModel):
     """A perception stack chosen in one line, instead of assembled from parts.
 
-    Leaving this block out keeps the legacy ``models.detector`` / ``models.segmenter_backend`` keys in
-    force, byte-identically, so an existing cell is unaffected until someone opts in. Those keys
-    also remain the do-it-yourself path for anyone who wants a combination the presets do not bless.
-
-    The presets exist because the individual keys are independently settable and nothing checked them
-    against each other: every detector x segmenter combination builds today, including ones where the
-    prompt means something different to each half.
+    Leaving this block out keeps the ``models.detector`` / ``models.segmenter_backend`` keys in
+    force, byte-identically. Those keys remain the do-it-yourself path for a combination the presets
+    do not offer, and nothing cross-checks them against each other.
     """
 
     kind: Literal["zero_shot", "closed_set"] = "zero_shot"
@@ -268,28 +258,21 @@ class PipelineConfig(StrictModel):
 
     @model_validator(mode="after")
     def _refuse_combinations_that_cannot_mean_anything(self) -> "PipelineConfig":
-        """Reject a stack whose halves disagree, naming what IS legal.
+        """Reject a stack whose halves disagree, naming what is legal.
 
-        Fail-closed rather than warn-and-continue: the failure mode this pipeline work exists to remove
-        is a stack that runs confidently and grounds the wrong thing, and a warning in a log has never
-        stopped a grasp.
+        Fail-closed rather than warn-and-continue: a mismatched stack runs confidently and grounds
+        the wrong thing, and a warning in a log does not stop a grasp.
         """
-        # NOTE (2026-08-11): the VLM route used to pin segmenter='sam2' here. That was policy, not a
-        # technical limit, and it was wrong: OneFormer implements the same box-prompted contract
-        # (`segment_detection` -> `_pick_segment_in_box`), so it works with any box source, the
-        # phrase grounder and the VLM alike. Both routes now honour the choice.
-        #
-        # Which is better is unmeasured. Sam2 is prompted per box and cuts one object; OneFormer
-        # segments the whole image with its own trained vocabulary and the box selects among the
-        # segments. Those fail differently, and this repo has no comparison yet, so this is a knob,
-        # not a recommendation.
+        # Both routes honour the segmenter choice: OneFormer implements the same box-prompted
+        # contract (`segment_detection` -> `_pick_segment_in_box`), so it takes boxes from the
+        # phrase grounder and from the VLM alike. Which of the two segments better is unmeasured,
+        # so this is a knob and not a recommendation: sam2 is prompted per box and cuts one object,
+        # OneFormer segments the whole image with its own trained vocabulary and the box selects
+        # among the segments.
         if self.kind == "closed_set" and self.router.enabled:
-            # A closed-set stack has no free-text route to send anything to; routing a prompt there
-            # would produce a decision nothing can act on.
-            #
-            # Only an explicit `router.enabled: true` is an error. Left unset it is just the field's
-            # default, and failing someone for a default they never wrote, when the correct value is
-            # unambiguous, is a validator being pedantic rather than protective.
+            # A closed-set stack has no free-text route to send anything to, so routing a prompt
+            # there produces a decision nothing can act on. Only an explicit `router.enabled: true`
+            # is an error; left unset, the field is corrected to false below.
             if "router" in self.model_fields_set and "enabled" in self.router.model_fields_set:
                 raise ValueError(
                     "models.pipeline: kind='closed_set' cannot use the prompt router. Routing "
@@ -298,18 +281,16 @@ class PipelineConfig(StrictModel):
                 )
             object.__setattr__(self, "router", self.router.model_copy(update={"enabled": False}))
         if self.kind == "zero_shot" and self.router.enabled and self.zero_shot.backend != "vlm":
-            # Routing exists to send hard prompts somewhere better. With only the phrase grounder
-            # configured there is nowhere better to send them, so every VLM decision the router made
-            # would either be ignored or would fail at pick time, after the operator pressed go.
-            #
-            # Same rule as the closed_set case above: only an explicit `router.enabled: true` is an
-            # error. The field defaults to true because routing is the point of this block, and the
-            # Default backend is the phrase grounder, so a bare `pipeline: {}` would otherwise be
-            # rejected for a combination nobody wrote.
+            # Routing sends hard prompts somewhere better, and with only the phrase grounder
+            # configured there is nowhere better to send them: a VLM decision would be ignored or
+            # would fail at pick time, after the operator pressed go. As above, only an explicit
+            # `router.enabled: true` is an error: the field defaults to true and the default backend
+            # is the phrase grounder, so a bare `pipeline: {}` would otherwise be rejected for a
+            # combination nobody wrote.
             if "router" in self.model_fields_set and "enabled" in self.router.model_fields_set:
                 raise ValueError(
                     f"models.pipeline: router.enabled=true needs zero_shot.backend='vlm'. The "
-                    f"router chooses BETWEEN the phrase grounder and the VLM, and backend="
+                    f"router chooses between the phrase grounder and the VLM, and backend="
                     f"{self.zero_shot.backend!r} configures no VLM for it to choose. Set backend: "
                     f"'vlm' (the phrase grounder stays the simple route), or router.enabled: false."
                 )

@@ -19,84 +19,41 @@ def configure_camera_for_quality(
     warmup_frames: int = 30
 ) -> dict:
     """
-    Configure an already opened OpenCV VideoCapture object for higher image quality
-    and lower latency.
+    Configure an already opened OpenCV VideoCapture for image quality and low latency.
 
-    The function attempts to set the preferred pixel format (uncompressed yuy2/yuyv
-    or compressed mjpg), resolution, frame rate, and several optional camera
-    properties such as exposure, gain, and white balance. It also tries to disable
-    automatic camera features like auto white balance and autofocus when requested.
+    Sets the pixel format, resolution and frame rate, then the optional manual exposure,
+    gain and white balance, disabling the corresponding automatic features first.
 
-    Note:
-        Not all cameras, drivers, or OpenCV backends support all properties.
-        A successful call to ``cap.set(...)`` does not always guarantee that the
-        requested value was actually applied. Therefore, the function reads back
-        the active camera settings and returns them for inspection.
+    Not every camera, driver or OpenCV backend supports every property, and a ``cap.set(...)``
+    that reports success does not guarantee the value was applied. The active settings are
+    therefore read back off the device afterwards and returned, so the caller can check what
+    it actually got rather than what it asked for.
 
     Args:
-        cap (cv.VideoCapture):
-            An already opened OpenCV VideoCapture object.
-        width (int):
-            Desired frame width in pixels.
-        height (int):
-            Desired frame height in pixels.
-        fps (int):
-            Desired frames per second.
-        prefer_uncompressed (bool):
-            If True, try to use an uncompressed format (yuy2, fallback yuyv).
-            If False, use mjpg.
-        manual_exposure (float | None, optional):
-            Manual exposure value to set. If None, exposure is not changed manually.
-        manual_gain (float | None, optional):
-            Manual gain value to set. If None, gain is not changed.
-        manual_wb (float | None, optional):
-            Manual white balance value to set using
-            ``cv.CAP_PROP_WHITE_BALANCE_BLUE_U``. If None, white balance is not
-            changed manually.
-        disable_auto_features (bool, optional):
-            If True, attempts to disable automatic features such as auto exposure,
-            auto white balance, and autofocus before applying manual values.
-        backend_hint (int | None, optional):
-            Optional backend hint for the capture device. Currently unused in this
-            function, but kept for API compatibility or future extension.
+        cap: An already opened VideoCapture.
+        width: Desired frame width in pixels.
+        height: Desired frame height in pixels.
+        fps: Desired frames per second.
+        prefer_uncompressed: True tries YUY2 and falls back to YUYV, False uses MJPG.
+        manual_exposure: Exposure to set, or None to leave exposure alone.
+        manual_gain: Gain to set, or None to leave gain alone.
+        manual_wb: White balance to set through ``cv.CAP_PROP_WHITE_BALANCE_BLUE_U``,
+            or None to leave white balance alone.
+        disable_auto_features: Disable auto exposure, auto white balance and autofocus
+            before the manual values are applied.
+        warmup_frames: Frames to grab before the settings are read back.
 
     Returns:
-        dict:
-            A dictionary containing the actual camera settings read back from the
-            device after configuration. Includes raw and decoded fourcc as well as
-            image and image-processing related properties.
-
-    Keys in returned dictionary:
-        - fourcc (int): Raw fourcc integer value.
-        - width (int): Actual frame width.
-        - height (int): Actual frame height.
-        - fps (float): Actual frame rate.
-        - exposure (float): Actual exposure value.
-        - gain (float): Actual gain value.
-        - wb_blue_u (float): Actual white balance value.
-        - brightness (float): Brightness setting.
-        - contrast (float): Contrast setting.
-        - saturation (float): Saturation setting.
-        - sharpness (float): Sharpness setting.
-        - fourcc_str (str): fourcc decoded as a readable 4-character string.
+        The settings read back from the device, holding the raw fourcc integer, the same
+        value decoded as a four character string, the format actually requested, and the
+        image and image-processing properties. Keys: ``fourcc``, ``fourcc_str``,
+        ``selected_fourcc_requested``, ``width``, ``height``, ``fps``, ``auto_exposure``,
+        ``exposure``, ``gain``, ``auto_wb``, ``wb_blue_u``, ``autofocus``, ``brightness``,
+        ``contrast``, ``saturation``, ``sharpness``.
 
     Raises:
-        No exceptions are raised explicitly by this function. However, OpenCV or
-        device/backend specific errors may still occur depending on the runtime
-        environment.
-
-    Example:
-        >>> cap = cv.VideoCapture(0)
-        >>> settings = configure_camera_for_quality(
-        ...     cap,
-        ...     width=1920,
-        ...     height=1080,
-        ...     fps=30,
-        ...     prefer_uncompressed=True,
-        ...     manual_exposure=-6,
-        ...     manual_gain=0
-        ... )
-        >>> print(settings["fourcc_str"], settings["width"], settings["height"])
+        RuntimeError: ``cap`` is not open. Beyond that, OpenCV or device backend errors
+            can still surface from the ``cap.set`` calls.
     """
 
     if not cap.isOpened():
@@ -118,9 +75,10 @@ def configure_camera_for_quality(
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, height)
     cap.set(cv.CAP_PROP_FPS, fps)
 
-    # Disable auto features (backend-dependent!)
+    # Disable auto features, where the backend implements them at all.
     if disable_auto_features:
-        # Often: 0.25 = manual, 0.75 = auto (depends on backend/camera)
+        # 0.25 selects manual exposure and 0.75 auto on most backends, but the mapping is
+        # backend and camera specific.
         cap.set(cv.CAP_PROP_AUTO_EXPOSURE, 0.25)
         cap.set(cv.CAP_PROP_AUTO_WB, 0)
         cap.set(cv.CAP_PROP_AUTOFOCUS, 0)
@@ -138,7 +96,7 @@ def configure_camera_for_quality(
     # Small buffer for lower latency
     cap.set(cv.CAP_PROP_BUFFERSIZE, 1)
 
-    # warmup for camera:
+    # Warm up the camera before the settings are read back.
     for _ in range(warmup_frames):
         cap.grab()
     cap.retrieve()

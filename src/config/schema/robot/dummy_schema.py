@@ -1,4 +1,4 @@
-"""Dummy driver config schema (R7.1 split from robot_schema.py)."""
+"""Dummy driver config schema."""
 
 from __future__ import annotations
 

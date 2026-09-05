@@ -1,15 +1,11 @@
 """SGBM-based disparity computation with optional WLS refinement.
 
-This module wraps OpenCV's ``StereoSGBM`` matcher and adds:
-
-* Validated configuration (``num_disparities`` divisible by 16, odd ``block_size``).
-* Optional WLS post-filter (``cv.ximgproc.createDisparityWLSFilter``) that
-  smooths disparities in low-texture regions while preserving edges.
-  Requires ``opencv-contrib-python``.
-* Optional ``MODE_SGBM_3WAY`` for ~2x speedup on 720p frames.
-* Optional temporal exponential moving average for realtime mode.
-
-The ``compute`` API contract is stable: ``(disparity_float32, valid_mask_bool)``.
+Wraps OpenCV's ``StereoSGBM`` matcher and adds validated configuration
+(``num_disparities`` divisible by 16, odd ``block_size``). Optional on top of
+that: a WLS post-filter (``cv.ximgproc.createDisparityWLSFilter``, requires
+``opencv-contrib-python``) that smooths disparities in low-texture regions
+while preserving edges, ``MODE_SGBM_3WAY`` for a ~2x speedup on 720p frames,
+and a temporal exponential moving average for realtime mode.
 """
 
 from __future__ import annotations
@@ -27,10 +23,9 @@ if TYPE_CHECKING:  # pragma: no cover (typing only)
 
 __all__ = ["DisparityComputer"]
 
-# OpenCV's recommended SGBM smoothness penalty heuristics. P1 is the
-# small disparity-change penalty (per pixel), P2 is the large-change
-# penalty. Factor 3 corresponds to channels, and is kept at the OpenCV default
-# even though we feed grayscale.
+# OpenCV's recommended SGBM smoothness penalty heuristics. P1 penalises a small
+# disparity change per pixel, P2 a large one. The factor 3 is the channel count
+# of OpenCV's default and stays there although the input is grayscale.
 _P1_FACTOR = 8 * 3
 _P2_FACTOR = 32 * 3
 

@@ -14,11 +14,9 @@ from ._ur_models import UR_MODEL_KEYS  # re-exported: the sim cell and the real 
 class SimCameraSchema(StrictModel):
     """Per-camera entry inside :class:`SimConfig.cameras`.
 
-    Pydantic mirror of the driver-side dataclass
-    ``src.robot.drivers.sim.config.SimCameraConfig``. The runtime
-    converts this Pydantic model into the driver dataclass at
-    arm-construction time. Kept intentionally minimal: any future
-    knobs should land on the driver dataclass first, then mirror here.
+    Pydantic mirror of the driver-side dataclass ``src.robot.drivers.sim.config.SimCameraConfig``;
+    the runtime converts this model into that dataclass at arm-construction time. Kept minimal: a
+    new knob lands on the driver dataclass first, then mirrors here.
     """
 
     prim_path: str = Field(default="", min_length=0)
@@ -27,9 +25,9 @@ class SimCameraSchema(StrictModel):
     near_clip_m: float | None = Field(default=None, gt=0.0)
     resolution: tuple[int, int] | None = None
     # Horizontal field of view (deg) to author the lens from, i.e. the FOV of the real sensor this
-    # camera stands in for (an Intel RealSense d435's RGB stream is 69.4 deg). None keeps Isaac's default
-    # lens, which is narrower than a d435 and therefore frames a smaller slice of the table than the real
-    # cell will: a silent sim2real gap. See willy_sim/scene/cameras.py (D435_RGB_HFOV_DEG).
+    # camera stands in for (an Intel RealSense D435's RGB stream is 69.4 deg). None keeps Isaac's
+    # default lens, which is narrower and frames a smaller slice of the table than the real cell will:
+    # a silent sim2real gap. See willy_sim/scene/cameras.py (D435_RGB_HFOV_DEG).
     hfov_deg: float | None = Field(default=None, gt=0.0, lt=180.0)
     # Fixed (eye-to-hand) cameras: world position in mm (None -> authored elsewhere).
     position_mm: tuple[float, float, float] | None = None
@@ -43,9 +41,9 @@ class SimObjectConfig(StrictModel):
     """Graspable object authored into the sim scene (willy_sim scene-authoring)."""
 
     name: str = "cube"  # identity handle for prompt-based selection among clutter ("the green cube")
-    # Procedural primitive shape (ignored when usd_asset_path is set). "cube" -> DynamicCuboid (size_mm = the
-    # box extents). "cylinder" -> DynamicCylinder (size_mm = (diameter, diameter, height); the round body a
-    # 3-finger centric gripper like the Schunk EZU-35 wraps firmly). Default "cube" -> byte-identical.
+    # Procedural primitive shape, ignored when usd_asset_path is set. "cube" -> DynamicCuboid
+    # (size_mm = the box extents). "cylinder" -> DynamicCylinder (size_mm = (diameter, diameter,
+    # height)), the round body a 3-finger centric gripper like the Schunk EZU-35 wraps firmly.
     shape: str = "cube"
     size_mm: tuple[float, float, float] = (30.0, 30.0, 50.0)
     position_mm: tuple[float, float, float] = (450.0, 0.0, 25.0)
@@ -57,11 +55,11 @@ class SimObjectConfig(StrictModel):
     # Spawn orientation (world, WXYZ); None -> identity. A referenced YCB authored lying (e.g. the soup
     # can) is spawned upright so it settles stable + reliably graspable. Ignored for procedural cubes.
     orientation_wxyz: tuple[float, float, float, float] | None = None
-    # Collision approximation for a referenced NON-physics YCB mesh (the
-    # /Isaac/Props/YCB/Axis_Aligned/ variants carry no collider/rigid-body, unlike Axis_Aligned_Physics/).
-    # None (default) -> author nothing (byte-identical: cubes + the pre-rigged Axis_Aligned_Physics YCB are
-    # untouched). Set to "convexHull" (Isaac's own recipe for 003-006) or "convexDecomposition" to author
-    # UsdPhysics on the mesh at runtime so it becomes a graspable rigid body. Ignored for procedural cubes.
+    # Collision approximation for a referenced mesh without physics: the /Isaac/Props/YCB/Axis_Aligned/
+    # variants carry no collider or rigid-body, unlike Axis_Aligned_Physics/. None authors nothing and
+    # leaves the pre-rigged Axis_Aligned_Physics YCB untouched. "convexHull" (Isaac's own recipe for
+    # 003-006) or "convexDecomposition" authors UsdPhysics on the mesh at runtime so it becomes a
+    # graspable rigid body. Ignored for procedural cubes.
     usd_collision_approximation: str | None = None
 
 
@@ -115,18 +113,17 @@ class SimSceneConfig(StrictModel):
 class SimConfig(StrictModel):
     """Isaac-Sim (or pure-Python mock) driver settings.
 
-    Only consulted when ``robot.vendor == "sim"``. Mirrors the driver
-    dataclass
-    ``src.robot.drivers.sim.config.SimRobotConfig`` so YAML
-    edits stay validated even on hosts without the Isaac SDK installed.
+    Only consulted when ``robot.vendor == "sim"``. Mirrors the driver dataclass
+    ``src.robot.drivers.sim.config.SimRobotConfig`` so YAML edits stay validated even on hosts
+    without the Isaac SDK installed.
     """
 
     backend: Literal["isaac"] = "isaac"
     enabled: bool = False
     mock_mode: bool = False
-    # Which UR model this sim cell drives (de-locks the historically UR5e-hardcoded driver): "ur5e" (default,
-    # byte-identical), "ur3e", "ur10e". Selects the Lula config + Isaac USD (scene builder) + the driver's
-    # cuRobo {key}.yml. Keep the safety block's kinematics_model in sync with this. See sim/robot_models.py.
+    # Which UR model this sim cell drives: "ur5e" (default), "ur3e", "ur10e". Selects the Lula config,
+    # the Isaac USD the scene builder references and the driver's cuRobo {key}.yml. Keep the safety
+    # block's kinematics_model in sync with this. See sim/robot_models.py.
     robot_model: str = "ur5e"
     scene: str | None = None
     robot_prim_path: str | None = None
@@ -140,10 +137,9 @@ class SimConfig(StrictModel):
     # driver dataclass; the "robot.sim" namespace owns the whole simulated work-cell). ---
     assets_root: str | None = None              # Isaac asset pack root (carb asset_root + scene build)
     gripper_variant: str = "Robotiq_2f_85"      # USD Gripper variant selection on the UR5e asset
-    # When set (a key in willy_sim.grippers.MOUNTED_GRIPPERS, e.g.
-    # "schunk_egu50"), the scene builder selects the "None" UR5e Gripper variant and mounts that standalone
-    # vendor gripper on the wrist instead (and the runtime drives it via the matching GripperProfile). None
-    # (default) keeps the baked ``gripper_variant`` -> byte-identical for every existing cell.
+    # A key in willy_sim.grippers.MOUNTED_GRIPPERS, e.g. "schunk_egu50": the scene builder selects the
+    # "None" UR5e Gripper variant and mounts that standalone vendor gripper on the wrist instead, and
+    # the runtime drives it via the matching GripperProfile. None keeps the baked ``gripper_variant``.
     gripper_mount: str | None = None
     # Which suction cup to mount for a suction pick: a key in willy_sim.grippers.SUCTION_CUPS
     # (e.g. "slim" for a finer cup that reaches tighter gaps). None (default) uses the standard cup.

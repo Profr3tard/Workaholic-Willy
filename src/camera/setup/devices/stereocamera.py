@@ -9,16 +9,12 @@ from src.camera.setup.quality import configure_camera_for_quality
 
 class StereoVisionCalibrationSingleDevice:
     """
-    Stereo capture helper for single-device stereo cameras (side-by-side or top-bottom).
+    Records stereo calibration pairs from one stereo device, side-by-side or top-bottom.
 
-    Features:
-    - opens one stereo device
-    - configures the device stream via shared quality utility
-    - validates actual device resolution/FPS
-    - splits each frame into left/right images
-    - applies optional crop before splitting
-    - validates per-eye output size
-    - stores RAW split images without overlay contamination
+    Opens the single device, configures its stream through `configure_camera_for_quality` and
+    checks the resolution and frame rate it actually reports. Each frame is cropped, split into
+    a left and a right eye, and checked against the configured per-eye size. The saved images
+    are the raw split; the operator overlay is drawn on separate preview copies only.
     """
 
     def __init__(self, dev_cfg: SingleDeviceRigConfig):

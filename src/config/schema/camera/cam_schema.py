@@ -121,10 +121,9 @@ class SingleDeviceRigConfig(BaseRigConfig):
 class RealSensePostProcessingConfig(StrictModel):
     """Depth post-processing filter chain for the RealSense backend.
 
-    Applied to each depth frame in librealsense's recommended order
-    (decimation -> spatial -> temporal -> hole-filling). Every filter is a
-    no-op when disabled, so the defaults leave the raw device depth untouched
-    except for the mild spatial/temporal smoothing RealSense recommends.
+    Applied to each depth frame in librealsense's recommended order (decimation -> spatial ->
+    temporal -> hole-filling). Every filter is a no-op when disabled, so the defaults leave the raw
+    device depth untouched apart from the spatial and temporal smoothing RealSense recommends.
     """
 
     decimation: bool = False
@@ -138,10 +137,9 @@ class RealSensePostProcessingConfig(StrictModel):
 class RealSenseConfig(StrictModel):
     """Intel RealSense (pyrealsense2) device tuning.
 
-    Consumed only when ``rgbd_backend == "realsense"`` and ignored by the
-    generic OpenCV backend. Every field has a working default so the driver
-    streams out-of-the-box on a connected device; ``None`` means "leave the
-    device/SDK default in place".
+    Consumed only when ``rgbd_backend == "realsense"`` and ignored by the generic OpenCV backend.
+    Every field has a working default so the driver streams out of the box on a connected device;
+    ``None`` means "leave the device/SDK default in place".
     """
 
     enable_emitter: bool = True
@@ -222,16 +220,13 @@ class CameraSystemConfig(StrictModel):
             if not active.enabled:
                 raise ValueError(f"active_rig_id {self.active_rig_id!r} is disabled")
 
-        # More than one enabled RGB-d rig means two physical cameras on one bus, and then the only
-        # stable way to say which is which is the serial number. `RealSenseRGBDStreamer` binds a device
-        # with `rs_config.enable_device(self.serial)` and, with no serial, takes whatever the SDK offers
-        # first, an order that is not stable across boots or replugs.
-        #
-        # Why that is worse than an outage: two identical D435s that swap identity do not fail. They
-        # produce a complete, plausible scene with left and right exchanged, so every fused position is
-        # mirrored about the rig axis and the pick goes confidently to the wrong place. The September
-        # cell is exactly this case, two D435s obliquely mounted, and the shipped config could not
-        # express it at all (one rig, serial null).
+        # More than one enabled RGB-D rig means two or more physical cameras on one bus, and the
+        # serial number is the only stable way to say which is which. `RealSenseRGBDStreamer` binds
+        # a device with `rs_config.enable_device(self.serial)` and, with no serial, takes whatever
+        # the SDK offers first, an order that is not stable across boots or replugs. Two identical
+        # D435s that swap identity do not fail: they produce a complete, plausible scene with left
+        # and right exchanged, so every fused position is mirrored about the rig axis and the pick
+        # goes confidently to the wrong place.
         rgbd = [r for r in self.rigs if getattr(r, "source", None) == "rgbd" and r.enabled]
         if len(rgbd) > 1:
             missing = [r.rig_id for r in rgbd if not getattr(r, "serial_number", None)]
@@ -260,9 +255,8 @@ class CameraSystemConfig(StrictModel):
 class WlsFilterConfig(StrictModel):
     """Optional WLS (Weighted Least Squares) post-filter for SGBM disparity.
 
-    Dramatically smooths disparity in low-texture regions while preserving
-    edges. Requires ``opencv-contrib-python`` (which provides
-    ``cv2.ximgproc``).
+    Smooths disparity in low-texture regions while preserving edges. Requires
+    ``opencv-contrib-python``, which provides ``cv2.ximgproc``.
     """
 
     enabled: bool = False
@@ -285,23 +279,21 @@ class StereoMatcherConfig(StrictModel):
     block_size: int = Field(alias="blockSize")
     p1: int | None = Field(default=None, ge=0)
     p2: int | None = Field(default=None, ge=0)
-    #: Percent by which the best match must beat the runner-up before it is trusted. Higher = fewer
-    #: wrong depths on textureless surfaces, at the price of holes where nothing wins clearly. This is
-    #: the main "confident but sparse vs dense but wrong" dial.
+    #: Percent by which the best match must beat the runner-up before it is trusted. Higher gives
+    #: fewer wrong depths on textureless surfaces and more holes where nothing wins clearly.
     uniqueness_ratio: int = Field(alias="uniquenessRatio", ge=0)
-    #: Largest blob of similar disparity still treated as noise and cleared. Isolated specks are almost
-    #: always mismatches, and a speck at the wrong depth is worse than a hole because a grasp can be
-    #: planned onto it. ``0`` disables the filter.
+    #: Largest blob of similar disparity still treated as noise and cleared. A speck at the wrong
+    #: depth is worse than a hole, because a grasp can be planned onto it. ``0`` disables the filter.
     speckle_window_size: int = Field(alias="speckleWindowSize", ge=0)
     #: How much disparity may vary inside one blob before it counts as a separate surface rather than
     #: one speckle. Read together with ``speckle_window_size``; alone it does nothing.
     speckle_range: int = Field(alias="speckleRange", ge=0)
-    #: Tolerance (px) of the left-right consistency check: a pixel is kept only if matching left-to-right
-    #: and right-to-left agree within this. It is the cheapest guard against occlusion-edge depths, which
+    #: Tolerance (px) of the left-right consistency check: a pixel is kept only if matching
+    #: left-to-right and right-to-left agree within this. Guards against occlusion-edge depths, which
     #: are exactly the depths a grasp planner would otherwise aim at. ``-1`` disables the check.
     disp12_max_diff: int = Field(alias="disp12MaxDiff")
 
-    # --- Quality knobs (all optional, defaults preserve historical behaviour) ---
+    # --- Quality knobs, all optional ---
     mode: Literal["sgbm", "sgbm_3way"] = "sgbm"
     subpixel: bool = True
     temporal_alpha: float = Field(

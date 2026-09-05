@@ -15,16 +15,15 @@ from pathlib import Path
 FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Guards the process-wide handler registries below against concurrent
-# create_logger() calls, which is the Windows multi-writer race this module
-# exists to prevent. Reentrant, so create_logger can hold it while calling the
-# _get_*_handler helpers, which acquire it too.
+# create_logger() calls. Reentrant, so create_logger can hold it while calling
+# the _get_*_handler helpers, which acquire it too.
 _LOCK = threading.RLock()
 
 # Process-wide registry of file handlers, keyed by absolute log file path.
 # Loggers that target the same file, for instance every class in the robot
-# package writing to robot.log, share one handler. That avoids the Windows
-# multiple-writer problem, where each RotatingFileHandler opens its own file
-# descriptor and rotation can race.
+# package writing to robot.log, share one handler. One handler per logger would
+# hit the Windows multiple-writer problem, where each RotatingFileHandler opens
+# its own file descriptor and rotation can race.
 _FILE_HANDLERS: dict[str, RotatingFileHandler] = {}
 
 # One shared console handler, so every logger writes to stdout exactly once
@@ -49,20 +48,18 @@ def _get_file_handler(
             maxBytes=max_bytes,
             backupCount=backup_count,
             encoding="utf-8",
-            # Open on first write rather than on construction, which is load
-            # bearing on Windows. create_logger runs at module import, so
-            # without this every process that imports a logging module opens the
-            # file whether or not it ever writes a line. Three pool workers each
-            # holding three handles is enough that the parent can no longer
-            # rotate any of them: renaming a file another process holds open is
-            # refused with PermissionError, winerror 32. Rotation failing is
-            # silent, because logging swallows handler errors, so the symptom is
-            # a rotating log that quietly grows without bound.
-            #
-            # With delay, a process that never logs never opens the file. A log
-            # file then appears when something is first written to it rather
-            # than at import, which is the more honest signal: an existing log
-            # file means something was logged.
+            # Open on first write rather than on construction. create_logger
+            # runs at module import, so without this every process that imports
+            # a logging module holds the file open whether or not it ever
+            # writes a line, and on Windows the parent then cannot rotate it:
+            # renaming a file another process holds open is refused with
+            # PermissionError, winerror 32. Three pool workers holding three
+            # handles each is already enough to block rotation. That rotation
+            # failure is silent, because logging swallows handler errors, so
+            # the symptom is a rotating log that grows without bound. With
+            # delay, a process that never logs never opens the file, and a log
+            # file appears when something is first written to it rather than
+            # at import.
             delay=True,
         )
         handler.setFormatter(formatter)
@@ -82,11 +79,10 @@ def _get_console_handler(formatter: logging.Formatter) -> logging.StreamHandler:
 def _make_log_dir(path: str) -> None:
     """Create a log directory, or refuse with a sentence an operator can act on.
 
-    Loud rather than silent, and deliberately so: a cell whose logs cannot be
-    written is a cell whose evidence is gone, so swallowing this would trade a
-    visible failure for an invisible one. The message names the directory that
-    could not be made and the variable that chooses it, because this runs during
-    an import and a bare ``os.makedirs`` failure names neither.
+    Raises rather than swallowing: a cell whose logs cannot be written is a cell
+    whose evidence is gone. The message names the directory that could not be
+    made and the variable that chooses it, because this runs during an import,
+    where a bare ``os.makedirs`` failure names neither.
     """
     try:
         os.makedirs(path, exist_ok=True)
@@ -104,39 +100,35 @@ def resolve_log_dir(log_dir: str) -> str:
     Every package constant is a bare relative string such as ``"logs/robot"``.
     Handed straight to ``os.makedirs`` those follow the working directory, so a
     cell started from two directories writes two divergent log trees and neither
-    sits next to the checkout. Resolving here, at the one seam every logger goes
-    through, is what makes ``WILLY_LOG_DIR`` reach the logs at all: ``logs_dir()``
-    honours it, and nothing in the logging system used to call it.
+    sits next to the checkout. This is the one seam every logger goes through,
+    so resolving here through ``logs_dir()`` is what makes ``WILLY_LOG_DIR``
+    reach the logs at all.
 
-    The leading ``logs`` segment is stripped, which is what keeps the resolved
-    path unchanged for a run from the repository root. Every constant already
-    begins with it and ``logs_dir()`` is the logs directory, so joining them
-    blindly would give ``<root>/logs/logs/robot``.
+    The leading ``logs`` segment is stripped, which keeps the resolved path
+    unchanged for a run from the repository root. Every constant already begins
+    with it and ``logs_dir()`` is the logs directory, so joining them blindly
+    would give ``<root>/logs/logs/robot``.
 
-    An absolute directory is returned unchanged, because a caller who names one
-    has already decided.
+    An absolute directory is returned unchanged.
     """
     if os.path.isabs(log_dir):
         return log_dir
-    # Imported here rather than at module level, and it costs nothing: the
-    # package __init__ imports both paths and this module, so paths is always
-    # already in sys.modules by the time any caller reaches this line. A top
-    # level import would be a cycle, paths to utility.constants to
-    # utility_logger to here, which is why constants.py imports create_logger
-    # lazily for the same reason.
+    # Imported here rather than at module level: a top level import would be a
+    # cycle, paths to utility.constants to utility_logger to here. constants.py
+    # imports create_logger lazily for the same reason. It costs nothing, since
+    # the package __init__ imports both paths and this module, so paths is
+    # already in sys.modules by the time any caller reaches this line.
     from src.utility.paths import logs_dir  # noqa: PLC0415
 
     # logs_dir() creates the base itself, so a WILLY_LOG_DIR pointing at a file
-    # raises here and never reaches _make_log_dir below. The message about that
-    # variable belongs where the variable is read, which is this line and not
-    # the one that makes the subdirectory.
+    # raises here and never reaches _make_log_dir below.
     try:
         base = Path(logs_dir())
     except OSError as exc:
         raise OSError(
             f"cannot use the log directory ({type(exc).__name__}: {exc}). Logging is set up at "
             f"import time, so this stops the process before anything runs. Point WILLY_LOG_DIR at a "
-            f"writable DIRECTORY, or unset it to use the checkout's own logs/."
+            f"writable directory, or unset it to use the checkout's own logs/."
         ) from exc
     parts = Path(log_dir).parts
     if parts and parts[0] == "logs":
@@ -158,9 +150,7 @@ def create_logger(
     """Create and configure a logger with file rotation and console output.
 
     Loggers are keyed by ``name``, so calling this twice with the same name
-    returns the same logger. File handlers are shared by path: every logger
-    pointing at the same physical file uses one ``RotatingFileHandler``, which
-    keeps rotation atomic even when many components write to the same log.
+    returns the same logger, already configured.
 
     Args:
         name:           Logger name, typically the class or module.
@@ -172,9 +162,7 @@ def create_logger(
         aggregate_file: Optional second file sink shared across many loggers,
                         for instance a package-wide ``robot.log``. When set, the
                         logger writes to both its per-module ``log_file`` and
-                        this aggregate. The aggregate handler is keyed by path
-                        and shared, so rotation stays atomic. ``None`` keeps the
-                        single-file behaviour.
+                        this aggregate. ``None`` keeps the single-file behaviour.
         aggregate_dir:  Directory for ``aggregate_file``, defaulting to ``log_dir``.
 
     Returns:

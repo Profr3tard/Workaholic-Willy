@@ -1,16 +1,14 @@
 """Asking the config about itself: what is this key, where was it set, and why that value?
 
-The config could always be read. It could not be asked. With a profile chain merging several files into
-one section, "read it" means opening four files and reconstructing a merge in your head, and even then
-the two questions that matter go unanswered:
+A profile chain merges several files into one section, so reading it means opening four files and
+reconstructing the merge by hand, and three questions have no answer in them at all:
 
-  * **which layer set this?** ``_deep_merge`` returns the value and forgets the file.
-  * **why this number?** The YAML comments carry the measured evidence (*"6/6 up to 6 mm and 0/6 at
-    10 mm"*) and ``yaml.safe_load`` discards every one of them.
-
-There is a third question the files cannot answer at all: **what am I allowed to set?** 107 schema fields
-appear in no shipped YAML, including ``robot.ur.model``, so someone configuring real hardware by reading
-``robot.yaml`` cannot discover the field that decides which robot they are configuring.
+  * which layer set this? ``_deep_merge`` returns the value and forgets the file.
+  * why this number? The YAML comments carry the measured evidence ("6/6 up to 6 mm and 0/6 at
+    10 mm") and ``yaml.safe_load`` discards every one of them.
+  * what may be set at all? 107 schema fields appear in no shipped YAML, including
+    ``robot.ur.model``, so ``robot.yaml`` does not name the field that decides which robot is being
+    configured.
 
 This module answers all three, read-only, from the tree as it stands. Nothing moves: the comment shown
 is read from the file its author wrote it in, at query time.
@@ -47,8 +45,8 @@ def _yaml_path(path: str) -> str:
     """The spelling the YAML (and therefore the provenance index) uses for ``path``.
 
     The provenance index is keyed by what is written in the file, so an aliased field must be looked up
-    under its alias or it is reported as "no YAML sets this" while the file plainly sets it,
-    measured on all 7 camelCase stereomatcher keys.
+    under its alias or it is reported as "no YAML sets this" while the file plainly sets it, on all 7
+    camelCase stereomatcher keys.
     """
     return alias_for(path) or path
 
@@ -99,11 +97,10 @@ class Layer:
 class KeyExplanation:
     """Everything known about one dotted key, decided but not yet rendered.
 
-    Split out from the text so a second consumer cannot drift from the CLI. The operator console shows
+    Kept apart from the text so a second consumer cannot drift from the CLI: the operator console shows
     the same provenance in a browser, and re-deriving "which layer won" there would be a second
-    implementation of the one question this module exists to answer. That is exactly how the browser
-    and the terminal end up disagreeing about a cell. ``render()`` below produces the CLI text from this
-    and nothing else, so the two are the same answer in two costumes.
+    implementation of the one question this module answers, which is how a browser and a terminal come
+    to disagree about a cell. ``render()`` below produces the CLI text from this and nothing else.
     """
 
     path: str
@@ -182,9 +179,9 @@ def explain(
     """Everything known about one dotted config key, structured.
 
     ``has_value`` defaults to ``value is not None``, which is what the CLI wants (it passes the loaded
-    value or nothing). A caller holding a key whose value legitimately IS ``None``
-    (``serial_number`` on an unconfigured camera, say) passes ``has_value=True`` to have it shown as
-    set rather than omitted.
+    value or nothing). A caller holding a key whose value legitimately is ``None`` (``serial_number``
+    on an unconfigured camera, say) passes ``has_value=True`` to have it shown as set rather than
+    omitted.
     """
     index = schema_index()
     # A dict[str, Model] block (e.g. robot.sim.cameras.overhead) is indexed once under `*`, so a
@@ -199,13 +196,13 @@ def explain(
             suggestions=tuple(nearest_keys(path, sorted(index), limit=5)),
         )
 
-    # `#:` comments in the schema source are how this project documents fields; Pydantic does not lift
-    # them into the JSON schema, so the explanation existed and was invisible to every tool.
+    # `#:` comments in the schema source are how this project documents fields. Pydantic does not lift
+    # them into the JSON schema, so `field_doc` reads them from the source instead.
     meaning = field.description or field_doc(path) or field_doc(field.path)
     scope = "means"
     if not meaning:
-        # No per-field prose: the block's own docstring is usually the better answer anyway, and it is
-        # already written and already maintained. Labelled differently so the reader knows the scope.
+        # No per-field prose: fall back to the block's own docstring, labelled with a different scope
+        # so the reader knows the answer describes the neighbourhood and not the key.
         meaning, scope = model_doc(path) or model_doc(field.path), "block"
 
     winner = chain[-1] if chain else None
@@ -222,30 +219,17 @@ def explain(
 
 
 def explain_in(cfg: Any, path: str, root: Path, layers: tuple[str, ...]) -> KeyExplanation:
-    """Everything known about ``path`` IN ``cfg``: the read and the explanation, in one call.
+    """Everything known about ``path`` in ``cfg``: the read and the explanation, in one call.
 
-    **This exists because the two callers disagreed, and the class below could not stop them.**
-    :class:`KeyExplanation` was split out from its text (see its docstring) so the operator console
-    and the terminal could not drift. They drifted anyway, one layer higher up: the drift was not in
-    how the answer is rendered but in what each caller found out before asking.
+    Splitting :class:`KeyExplanation` out of its text keeps two consumers from rendering one answer
+    differently; this keeps them from finding out different things before they ask. The read goes
+    through ``edit.read_key``, which returns :data:`~src.config.edit.MISSING` for an absent path and
+    so tells it apart from a key whose value really is ``None``. A caller that instead lets
+    ``has_value`` fall back to ``value is not None`` shows every such key as if nobody had set it,
+    and 45 of the default tree's 468 keys hold ``None``.
 
-    The console read the tree with ``edit.read_key``, which returns :data:`~src.config.edit.MISSING`
-    for an absent path, and passed ``has_value`` explicitly. The CLI used its own walker, which
-    returned ``None`` for both "absent" and "the value is None", so it let ``has_value`` default to
-    ``value is not None``.
-
-    Measured on the default tree: **45 of 468 keys hold ``None``**, and for every one of them::
-
-        CLI      camera.cameras.active_rig_id
-        console  camera.cameras.active_rig_id = None
-
-    One reads as "nobody set this", the other as "this is set to null". Both were produced from the
-    same function, from the same tree, about the same key.
-
-    **So the fix is a function that cannot be called two ways.** Neither caller supplies ``value``
-    or ``has_value`` any more, because neither is trusted to derive them. :func:`explain` keeps both
-    parameters for a caller that genuinely holds a value the tree does not (a proposed write, a
-    value from a form), which is a different question and deserves a different door.
+    :func:`explain` keeps ``value`` and ``has_value`` for a caller that genuinely holds a value the
+    tree does not (a proposed write, a value from a form), which is a different question.
     """
     value = read_key(cfg, path)
     found = value is not MISSING
@@ -278,8 +262,7 @@ def find_keys(needle: str, limit: int = 40, tier: str | None = None) -> str:
         body = "".join(f"\n  did you mean: {c}?" for c in close)
         return f"no config key matches {needle!r}.{body}"
     # No tree is loaded here on purpose (`where` must work when the config is broken), so the gate state
-    # comes from the schema default: "advanced unless a cell enables it". That is true, and the
-    # honest thing to say without a tree.
+    # comes from the schema default: advanced unless a cell enables it.
     by_tier: dict[str, list[str]] = {}
     for path in hits:
         field = index[path]
@@ -324,13 +307,13 @@ def decisions(
 ) -> str:
     """Only the values that differ from their schema default: the decisions someone actually made.
 
-    Measured: 3 of 310 robot leaves differ from the schema default, so a 448-line ``robot.yaml`` encodes
-    three decisions and 307 restatements. ``--print`` dumps all 876 lines of the tree with no way to tell
-    the two apart, which is why reading the config does not tell you what the cell was configured to do.
+    3 of 310 robot leaves differ from the schema default, so a 448-line ``robot.yaml`` encodes three
+    decisions and 307 restatements, and ``--print`` dumps all 876 lines of the tree with no way to tell
+    the two apart.
 
-    Comparing against the schema index rather than against a default-constructed ``AppConfig`` is
-    deliberate and necessary: ``AppConfig()`` is not constructible (``camera`` and ``models`` are
-    required), so there is no all-defaults tree to diff against. The index has every default anyway.
+    The comparison is against the schema index, not against a default-constructed ``AppConfig``:
+    ``AppConfig()`` is not constructible (``camera`` and ``models`` are required), so there is no
+    all-defaults tree to diff against, and the index carries every default anyway.
 
     Prior art: ``ansible-config dump --only-changed``, ``helm get values`` (user-supplied) vs ``-a``
     (computed), ``sshd -T``, ``tsc --showConfig``.

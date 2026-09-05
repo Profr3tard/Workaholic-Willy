@@ -39,9 +39,9 @@ logger = create_logger(
     "CalibrationSerialization", SERIALIZATION_LOG_FILE, log_dir=CALIBRATION_LOG_DIR
 )
 
-#: Wire schema for a persisted eye-in-hand CAMERA->TOOL calibration transform. Kept separate from
-#: :data:`EXTRINSICS_SCHEMA` (which is CAMERA->BASE-locked) so an EIH wrist camera has a typed artifact
-#: (the multi-camera registry loads it into an EyeInHandFrameResolver), instead of the old bespoke dict.
+#: Wire schema for a persisted eye-in-hand CAMERA->TOOL calibration transform. Separate from
+#: :data:`EXTRINSICS_SCHEMA`, which is locked to CAMERA->BASE, so a wrist camera has a typed
+#: artifact the multi-camera registry loads into an EyeInHandFrameResolver.
 CAM_TO_TOOL_SCHEMA: str = "willy.calibration.cam_to_tool/1"
 
 __all__ = [
@@ -123,8 +123,7 @@ def save_extrinsics(path: str | Path, ext: Extrinsics) -> Path:
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
     tmp.replace(target)
-    # The artifact a later pick depends on: record which file now carries which solve quality,
-    # so a bad pick can be traced back to the calibration run that produced this transform.
+    # Records which file carries which solve quality, so a bad pick traces back to its solve.
     logger.info(
         "Extrinsics written: %s (rig=%s, samples=%d, rmse=%.3f mm, quality=%s, %d bytes).",
         target,
@@ -164,7 +163,7 @@ def load_extrinsics(path: str | Path) -> Extrinsics:
 def save_cam_to_tool(path: str | Path, transform: Transform, *, rig_id: str) -> Path:
     """Atomically persist an eye-in-hand ``CAMERA -> TOOL`` calibration transform as versioned JSON.
 
-    ``transform`` must be ``Transform(from_frame=CAMERA, to_frame=TOOL)`` (translation in mm) --
+    ``transform`` must be ``Transform(from_frame=CAMERA, to_frame=TOOL)`` with translation in mm,
     the static calibration an :class:`EyeInHandFrameResolver` composes with the live TCP. Raises
     :class:`ExtrinsicsError` on the wrong frames.
     """

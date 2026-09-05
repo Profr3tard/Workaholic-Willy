@@ -52,7 +52,7 @@ class ArucoPoseEstimator:
             raise StereoCalibrationError("marker_length_mm must be > 0")
         self.aruco_dict = resolve_aruco_dictionary(dict_name)
         self.aruco_params = cv.aruco.DetectorParameters()
-        # Sub-pixel corner refinement markedly improves solvePnP pose accuracy on fiducials.
+        # Sub-pixel corner refinement improves solvePnP pose accuracy on fiducials.
         self.aruco_params.cornerRefinementMethod = cv.aruco.CORNER_REFINE_SUBPIX
         self._detector = cv.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
 
@@ -91,8 +91,9 @@ class ArucoPoseEstimator:
             logger.debug("ArUco: no markers detected.")
             return {} if target_id is None else None
 
-        # cv.aruco.estimatePoseSingleMarkers was removed in OpenCV >= 4.7 (we pin 4.13). Pose each
-        # detected marker with cv.solvePnP over its known square corners (mirrors willy_sim/hand_eye.py).
+        # cv.aruco.estimatePoseSingleMarkers does not exist in OpenCV >= 4.7 (4.13 is pinned), so
+        # each marker is posed with cv.solvePnP over its known square corners instead, mirroring
+        # willy_sim/hand_eye.py.
         half = self.marker_length / 2.0
         # cv2.aruco corner order is TL, TR, BR, BL -> object points with the marker +Z out of plane.
         obj = np.array(

@@ -1,14 +1,13 @@
 """Every field the schema accepts, including the ones no YAML mentions.
 
-Reading the YAML tells you what someone chose. It does not tell you what you are allowed to choose:
-measured, 107 schema fields appear in no shipped YAML at all, among them ``robot.ur.model``, the field
-that decides whether a real UR3e is planned and collision-checked as a UR3e or as a UR5e. Grepping the
-YAML for "gripper" likewise finds five hits and misses the entire suction end-effector.
+Reading the YAML tells you what someone chose, not what may be chosen: measured, 107 schema fields
+appear in no shipped YAML at all, among them ``robot.ur.model``, the field that decides whether a real
+UR3e is planned and collision-checked as a UR3e or as a UR5e. Grepping the YAML for "gripper" likewise
+finds five hits and misses the entire suction end-effector.
 
-So a user reasonably concludes the config surface is what the files show, and it is not. This module is
-the other half: a flat, dotted index of the schema (type, constraints, default and description for
-every field), derived from ``AppConfig.model_json_schema()`` rather than hand-maintained, so it cannot
-fall out of date with the models.
+This module is the other half: a flat, dotted index of the schema (type, constraints, default and
+description for every field), derived from ``AppConfig.model_json_schema()`` rather than
+hand-maintained, so it cannot fall out of date with the models.
 
 Nested models are followed through ``$ref``; a ``dict[str, Model]`` (e.g. ``robot.sim.cameras``) is
 indexed once under a ``*`` segment because every key under it accepts the same shape; a list of models
@@ -157,8 +156,8 @@ def _walk(
 def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
     """Resolve a dotted path to ``(owning model class, field name)``, or ``None``.
 
-    Walks the real Pydantic models rather than the JSON schema, because the answer wanted here is
-    *which class declares this field*; the JSON schema has already flattened that away.
+    Walks the real Pydantic models rather than the JSON schema: the answer wanted here is which class
+    declares the field, and the JSON schema has flattened that away.
     """
     import typing
 
@@ -171,8 +170,8 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
 
         Some annotations arrive as an unresolved ForwardRef string (``"X | None"``) because the schema
         modules use ``from __future__ import annotations`` and pydantic never needed to rebuild them.
-        Resolving it against the declaring module's namespace is what lets the walk reach, e.g.,
-        ``recovery.fixture``; otherwise the whole block reads as undocumented for a typing reason.
+        Resolving it against the declaring module's namespace is what lets the walk reach blocks such
+        as ``recovery.fixture``, which otherwise read as undocumented for a typing reason.
         """
         import sys as _sys
 
@@ -198,9 +197,9 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
     current: Any = AppConfig
     for i, part in enumerate(path_parts):
         # `*` marks a dict-of-models level and is not a field of its own: the descent already happened
-        # on the segment before it. `objects[]` IS a field whose items are models, so it must be
-        # descended through: skipping it looked for the item's fields on the containing model and found
-        # nothing, which is why every `objects[].*` field read as undocumented.
+        # on the segment before it. `objects[]` is a field whose items are models, so it is descended
+        # through; skipping it would look for the item's fields on the containing model and find none,
+        # leaving every `objects[].*` field undocumented.
         if part == "*":
             continue
         name = part[:-2] if part.endswith("[]") else part
@@ -222,16 +221,13 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
 def field_doc(path: str) -> str:
     """The comment block written immediately above a field in its schema source, dedented.
 
-    Accepts both ``#:`` (the Sphinx-style marker) and plain ``#``. The project uses both. Measured:
-    ``robot.sim.robot_model`` carries a four-line plain-``#`` explanation of exactly the de-locking this
-    field does, and a harvester that only took ``#:`` reported the field as undocumented. Prose above a
-    field IS its documentation regardless of which marker its author reached for; being strict here
-    loses information for a formatting reason, which is the opposite of the point.
+    Accepts both ``#:`` (the Sphinx-style marker) and plain ``#``, because the schema sources use
+    both: ``robot.sim.robot_model`` carries a four-line plain-``#`` explanation of the de-locking that
+    field does, and taking only ``#:`` reports such a field as undocumented.
 
-    Willy documents config fields with ``#:`` comments, which Pydantic does not lift into the JSON
-    schema, so the explanation exists, is maintained, and was invisible to every tool. Harvesting it
-    from the source at query time surfaces it without duplicating it into a ``description=`` that would
-    then have to be kept in sync (and would re-bless the schema golden).
+    Pydantic does not lift such comments into the JSON schema, so harvesting the block at query time
+    is what surfaces it, without duplicating the prose into a ``description=`` that would then have to
+    be kept in sync.
     """
     import inspect
 
@@ -255,20 +251,19 @@ def field_doc(path: str) -> str:
             out.append(text[1:].strip() if text.startswith(":") else text.strip())
             i -= 1
         _ = start  # line numbers not needed; the block is what carries the meaning
-        # A trailing comment on the field's own line is the third style this project uses
-        # (`name: str = "cube"  # identity handle for prompt-based selection`). Prefer the block above
-        # when both exist (it is the longer form), but never lose the one-liner when it is all there is.
+        # A trailing comment on the field's own line is the third style the schema sources use
+        # (`name: str = "cube"  # identity handle for prompt-based selection`). The block above wins
+        # when both exist; the trailing comment is returned when it is all there is.
         return "\n".join(reversed(out)) or trailing
     return ""
 
 
 def field_default(path: str, fallback: Any = None) -> Any:
-    """The TRUE default of a field, including ``default_factory`` values.
+    """The real default of a field, including ``default_factory`` values.
 
-    The JSON schema omits a ``default`` for any field built by a ``default_factory`` (every list/nested
-    model default in this tree), so a schema-only comparison reports those as "changed" no matter what
-    they hold, which would make a decisions view mostly noise, i.e. exactly the problem it exists to
-    solve. Asking Pydantic for the real default fixes it; the schema value stays as the fallback.
+    The JSON schema omits a ``default`` for any field built by a ``default_factory`` (every list or
+    nested-model default in this tree), so a schema-only comparison reports all of those as changed
+    whatever they hold. Pydantic is asked instead; the schema value stays as the fallback.
     """
     resolved = _model_at(path.split("."))
     if resolved is None:
@@ -288,8 +283,7 @@ def same_value(a: Any, b: Any) -> bool:
     """Config-equality that ignores container-type churn.
 
     ``model_dump()`` renders a ``tuple[float, float, float]`` field as a tuple while its default is
-    written as a list, so a plain ``==`` calls identical values different. A decisions view that shows
-    unchanged values is worse than none.
+    written as a list, so a plain ``==`` calls identical values different.
     """
     if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
         return len(a) == len(b) and all(same_value(x, y) for x, y in zip(a, b))
@@ -303,8 +297,8 @@ def _alias_pairs() -> dict[str, str]:
 
     The stereomatcher block keeps OpenCV's camelCase in YAML (``numDisparities``) behind snake_case
     attributes (``num_disparities``), the only aliased fields in the tree. The JSON schema knows only
-    the alias, so an ``explain`` of the attribute name reported not a known key while simultaneously
-    printing its value: a self-contradicting answer, which is worse than a missing one.
+    the alias, so without this mapping ``explain`` of an attribute name answers "not a known key"
+    while printing that key's value.
     """
     import typing
 
@@ -351,11 +345,9 @@ def alias_for(path: str) -> str | None:
 def model_doc(path: str) -> str:
     """The docstring of the model that declares ``path``, a fallback when the field has none.
 
-    A block's class docstring usually explains what the whole block is for, and often better than any
-    per-field line could: ``VacuumGripperConfig`` explains that every one of its numbers is something
-    someone must measure on the actual cell. Reaching for it when a field is otherwise unexplained turns
-    prose that already exists and is already maintained into an answer, rather than leaving the reader
-    with a bare type and a range.
+    A block's class docstring usually explains what the whole block is for: ``VacuumGripperConfig``
+    states that every one of its numbers has to be measured on the actual cell. Only the first
+    paragraph is returned, so an unexplained field answers with that instead of a bare type and range.
     """
     import inspect
 

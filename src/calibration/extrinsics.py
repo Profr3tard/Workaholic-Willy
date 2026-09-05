@@ -2,14 +2,11 @@
 :class:`Extrinsics`, the typed, vendor-neutral output of an eye-to-hand
 calibration solve.
 
-Wraps a :class:`~src.geometry.transform.Transform` whose direction
-is fixed at ``Frame.CAMERA -> Frame.BASE`` (translation in millimetres),
-together with the validation metadata callers need to decide whether the
-calibration is trustworthy.
-
-The dataclass is frozen + slotted, frame-checked, and self-classifying.
-Once constructed it is safe to share across threads or persist via
-:mod:`src.calibration.serialization`.
+Wraps a :class:`~src.geometry.transform.Transform` locked to
+``Frame.CAMERA -> Frame.BASE`` (translation in millimetres) together with the
+validation metadata a caller needs to decide whether the calibration is
+trustworthy. Frozen and slotted, so an instance is safe to share across
+threads or to persist via :mod:`src.calibration.serialization`.
 """
 
 from __future__ import annotations

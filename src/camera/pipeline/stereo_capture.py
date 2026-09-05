@@ -26,17 +26,11 @@ __all__ = ["StereoCapturePipeline"]
 
 
 class StereoCapturePipeline:
-    """
-        Execute the full pipeline.
+    """Turns a camera configuration into the runtime objects a caller streams from.
 
-        Args:
-            rig_id: Explicit rig to target.  ``None`` = auto-resolve.
-            force_record: Re-record calibration images even if enough exist.
-            clear_existing: Delete existing calibration images first.
-
-        Returns:
-            ``(FrameProvider, StereoCam3D | None)``
-            StereoCam3D is ``None`` only when every target rig is RGB-D.
+    It resolves which rigs to use, records the stereo calibration images that are missing,
+    and builds the `FrameProvider` and the `StereoCam3D` that rectifies its stereo frames.
+    RGB-D rigs are carried through but never calibrated here.
     """
 
     def __init__(
@@ -56,7 +50,17 @@ class StereoCapturePipeline:
         force_record: bool = False,
         clear_existing: bool = False,
     ) -> tuple[FrameProvider, StereoCam3D | None]:
-        """Resolve rigs, ensure stereo calibration data, and build runtime objects."""
+        """Resolve rigs, ensure stereo calibration data, and build runtime objects.
+
+        Args:
+            rig_id: Explicit rig to target. ``None`` auto-resolves from the configuration.
+            force_record: Re-record calibration images even if enough exist.
+            clear_existing: Delete existing calibration images first.
+
+        Returns:
+            ``(FrameProvider, StereoCam3D | None)``. StereoCam3D is ``None`` only when every
+            target rig is RGB-D.
+        """
         target_rigs = self._resolve_target_rigs(rig_id)
         stereo_rig_cfgs: list[StereoRigConfig] = []
 

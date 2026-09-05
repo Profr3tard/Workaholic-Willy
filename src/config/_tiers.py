@@ -6,17 +6,17 @@ cell facts and thirty are tuning behind a switch nobody turned on.
 
 So each field gets a tier. Two rules govern what a tier is allowed to be:
 
-  1. **A tier is a display filter, never a gate.** Every field stays settable, ``extra='forbid'`` keeps
+  1. A tier is a display filter, never a gate. Every field stays settable, ``extra='forbid'`` keeps
      accepting it, and hiding it from a listing removes nothing. Removing a value from a file removes
      nothing; removing a field removes a capability. A tier must never be mistaken for the second.
-  2. **A required field is never demoted.** 63 fields have no default at all; treating one as "long
-     tail" invites defaulting it later, and that would trade a hard load failure for a silent value in
-     the fail-open direction.
+  2. A required field is never demoted. 63 fields have no default at all; treating one as "long tail"
+     invites defaulting it later, which trades a hard load failure for a silent value in the fail-open
+     direction.
 
-The tiers are derived from what the schema and the loaded cell already say, not declared per field.
-That is not laziness: a hand-maintained table of 545 entries drifts the moment a block's ``enabled``
-flips, and would have to be re-blessed into the schema golden. Derivation cannot drift, and costs the
-goldens nothing.
+Tiers are derived from what the schema and the loaded cell already say rather than declared per
+field: a hand-maintained table of 545 entries drifts the moment a block's ``enabled`` flips, and
+would have to be re-blessed into the schema golden. Derivation cannot drift, and costs the goldens
+nothing.
 """
 
 from __future__ import annotations
@@ -71,8 +71,7 @@ def gate_state(path: str, index: dict[str, Any], values: dict[str, Any] | None) 
     config when one is available, so the answer reflects the chain actually being viewed: the sim
     block defaults to ``enabled: false`` but the ``sim`` layer turns it on, and calling its fields
     "advanced" while looking at a sim cell would be exactly backwards. With no loaded config (the
-    schema-only ``where``) the schema default is used, which reads as "advanced unless a cell enables
-    it". That is true, and the honest thing to say without a tree.
+    schema-only ``where``) the schema default is used, reading as "advanced unless a cell enables it".
     """
     parts = path.split(".")
     for i in range(1, len(parts)):

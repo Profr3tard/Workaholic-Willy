@@ -9,30 +9,16 @@ __all__ = ["ExtrinsicsTransformer"]
 
 class ExtrinsicsTransformer:
     """
-    Handles 3D coordinate transformations from a camera frame to a robot base frame.
+    Transforms 3D points from a camera frame into a robot base frame.
 
-    This class stores a 4x4 homogeneous transformation matrix `T_cam_to_base` that 
-    represents the extrinsic calibration between a camera and a robot base. It can 
-    validate, set, and apply this transformation to 3D points.
+    Holds the extrinsic calibration as one Transform tagged CAMERA -> BASE; a
+    transform between any other pair of frames is refused. `set_matrix` sets or
+    replaces it. Points are positions in millimetres. `T` exposes the same
+    transform as a 4x4 homogeneous matrix, or None while none is set.
 
     Usage:
         transformer = ExtrinsicsTransformer(T_cam_to_base)
         point_base = transformer.transform(point_cam)
-
-    Attributes:
-        T (np.ndarray | None): 4x4 homogeneous transformation matrix from camera
-            to base coordinates. None if not set.
-
-    Methods:
-        set_matrix(T): Set or update the transformation matrix with validation.
-        transform(point_cam): Transform a 3D point from camera coordinates
-            to base coordinates.
-
-    Example:
-        >>> T = np.eye(4)
-        >>> transformer = ExtrinsicsTransformer(T)
-        >>> point_cam = np.array([1.0, 2.0, 3.0])
-        >>> point_base = transformer.transform(point_cam)
     """
     
     def __init__(
@@ -78,20 +64,9 @@ class ExtrinsicsTransformer:
         """
         Transforms a 3D point from camera coordinates to robot base coordinates.
 
-        Args:
-                1. Convert the 3D camera point to homogeneous coordinates:
-                        P_c = [x_c, y_c, z_c, 1]
-
-                2. Multiply with the transformation matrix:
-                        P_r = T_cam_to_base @ P_c
-
-                3. Convert back from homogeneous coordinates by taking the first
-                three components:
-                        [x_r, y_r, z_r]
-
-        Returns:
-                The returned point represents the position of the original camera
-                point expressed in the robot base coordinate frame.
+        The point becomes homogeneous [x_c, y_c, z_c, 1], is multiplied by
+        T_cam_to_base, and the first three components are returned: the same
+        position expressed in the robot base frame.
         """
 
         if self._transform is None:

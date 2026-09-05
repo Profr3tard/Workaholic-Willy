@@ -2,25 +2,17 @@
 
 The loader reads up to a dozen YAML files, deep-merges a chain of profile overlays onto each, and hands
 back plain Python values. That merge is lossless about values and total about origin: ``_deep_merge``
-returns ``42`` with no memory of which of four files said ``42``. For a single-file config that costs
-nothing. With ``WILLY_PROFILE=sim,ur3e,tiltcam`` it means the system cannot answer the two questions a
-user actually has: *which layer set this?* and *why this number?* Neither can its error messages.
-
-The measured symptom: a typo in ``robot.sim.yaml`` produced
-
-    configuration failed schema validation under <data dir>:
-    robot.sim.tcp_offset_typo  Extra inputs are not permitted
-
-naming the *directory*, so the reader has to guess which of the layered files carries it, while
-``loader.py``'s own module docstring promised "the message always names the offending file".
+returns ``42`` with no memory of which of four files said ``42``. Under a chain such as
+``WILLY_PROFILE=sim,ur3e,tiltcam`` the merged values alone cannot say which layer set a key; without
+this module a schema error names only the data directory, and the reader has to guess the file inside
+it. ``loader.py`` uses ``index_origins`` to name the file, line and layer per offending key.
 
 This module is that memory. It is a side-car: a second, read-only walk over the same files the loader
 walks, recording a line mark per leaf. It never participates in the merge, so a bug here cannot change a
 single loaded value; the worst it can do is fail to explain one.
 
-Deliberately stdlib-only (``yaml.compose()`` yields ``start_mark.line`` for every node, so no
-``ruamel.yaml`` dependency at the bottom of the dependency stack), and it imports nothing from the robot
-runtime.
+Stdlib-only (``yaml.compose()`` yields ``start_mark.line`` for every node, so no ``ruamel.yaml``
+dependency at the bottom of the dependency stack), and it imports nothing from the robot runtime.
 """
 
 from __future__ import annotations
@@ -63,9 +55,9 @@ class Origin:
 def section_sources(root: Path) -> list[tuple[Path, str, str]]:
     """``(base_file, top_level_yaml_key, dotted AppConfig prefix)`` for every section the loader reads.
 
-    This mirrors ``loader._load_cached`` on purpose: a file it does not read cannot explain anything, and
-    a file it reads that is missing here would leave a key unexplained. Kept in one obvious table so the
-    two can be compared by eye; a test asserts every indexed key resolves to a real loaded value.
+    Mirrors ``loader._load_cached``: a file the loader does not read cannot explain anything, and a
+    file it reads that is missing here leaves a key unexplained. Kept as one table so the two can be
+    compared by eye.
     """
     return [
         (root / "camera" / "cam.yaml", "cameras", "camera.cameras"),
@@ -92,10 +84,9 @@ def index_origins(root: Path, layers: tuple[str, ...] = ()) -> dict[str, Origin]
     # file with no base counterpart (the loader allows that), so the whole directory is walked.
     models_dir = root / "models"
     if models_dir.is_dir():
-        # Base files first, then each layer in chain order. Walking the directory alphabetically instead
-        # would let `object.yaml` overwrite `object.sim.yaml` (s < y) and report the base as the winner
-        # for a value the sim layer actually set, the exact class of wrong answer this module exists to
-        # prevent, so the ordering is asserted by a test.
+        # Base files first, then each layer in chain order. Walking the directory alphabetically
+        # instead would let `object.yaml` overwrite `object.sim.yaml` (s < y) and report the base as
+        # the winner for a value the sim layer set.
         for layer in ("", *layers):
             for path in sorted(models_dir.glob("*.yaml")):
                 stem_parts = path.stem.split(".")
@@ -109,10 +100,10 @@ def index_origins(root: Path, layers: tuple[str, ...] = ()) -> dict[str, Origin]
 def _index_file(
     path: Path, top_key: str | None, prefix: str, layer: str, out: dict[str, Origin]
 ) -> None:
-    """Record a line mark for every leaf in ``path``. Unreadable/!mapping files are skipped, not raised.
+    """Record a line mark for every leaf in ``path``. Unreadable or non-mapping files are skipped.
 
-    Skipping rather than raising is deliberate: this runs while the loader is already reporting an
-    error, and an explainer that throws on the way to explaining is worse than one that says less.
+    This runs while the loader is already reporting an error, so a failure here must not raise a
+    second one.
     """
     try:
         node = yaml.compose(path.read_text(encoding="utf-8"))
@@ -141,8 +132,8 @@ def _walk(node: Any, prefix: str, path: Path, layer: str, out: dict[str, Origin]
         for k, v in node.value:
             name = str(getattr(k, "value", ""))
             dotted = f"{prefix}.{name}" if prefix else name
-            # Record the KEY line for containers too: an `extra_forbidden` on a nested block should
-            # point at the block, not vanish because the block is not a leaf.
+            # Record the key line for containers too: an `extra_forbidden` on a nested block points
+            # at the block instead of vanishing because the block is not a leaf.
             out[dotted] = Origin(path, int(k.start_mark.line) + 1, layer, name)
             _walk(v, dotted, path, layer, out)
     elif isinstance(node, yaml.SequenceNode):
@@ -153,9 +144,9 @@ def _walk(node: Any, prefix: str, path: Path, layer: str, out: dict[str, Origin]
 def index_chains(root: Path, layers: tuple[str, ...] = ()) -> dict[str, list[Origin]]:
     """Every write of every key, in loader order, not just the one that won.
 
-    The winner alone answers "where is this set"; the chain answers "what did I override, and was my
-    layer even reached", which is the question someone debugging a profile stack actually has. Same walk
-    as :func:`index_origins`, appending instead of overwriting, so the last entry is always the winner.
+    The winner alone answers where a key is set; the chain also shows what a layer overrode and
+    whether it was reached at all. Same walk as :func:`index_origins`, appending instead of
+    overwriting, so the last entry is always the winner.
     """
     chains: dict[str, list[Origin]] = {}
     single: dict[str, Origin] = {}
@@ -183,11 +174,10 @@ def index_chains(root: Path, layers: tuple[str, ...] = ()) -> dict[str, list[Ori
 def comment_above(origin: Origin) -> str:
     """The contiguous ``#`` block written immediately above ``origin``'s line, dedented.
 
-    This is the whole reason the explainer is worth building. The YAML comments are not decoration:
-    they carry the measured why (*"measured by sweeping the real planner: 6/6 up to 6 mm and 0/6 at
-    10 mm"*), and the loader throws every one of them away at ``yaml.safe_load``. Harvesting the block
-    at query time surfaces that evidence at the moment someone is confused about the value, and does it
-    Without moving a single character: the comment stays where its author put it.
+    The YAML comments carry the measured why of a value ("measured by sweeping the real planner: 6/6
+    up to 6 mm and 0/6 at 10 mm"), and ``yaml.safe_load`` throws every one of them away. Harvesting
+    the block at query time surfaces that evidence without moving a character: the comment stays where
+    its author put it.
     """
     try:
         lines = origin.file.read_text(encoding="utf-8").splitlines()
@@ -217,8 +207,8 @@ def read_value(origin: Origin) -> str:
 def nearest_keys(name: str, candidates: list[str], *, limit: int = 3) -> list[str]:
     """Closest ``candidates`` to ``name`` for a did-you-mean hint (stdlib difflib, no dependency).
 
-    Worth having because ``extra='forbid'`` turns every typo into a hard stop, and the most common typo
-    is a near-miss of a real field: the reader knows what they meant and only needs the spelling.
+    ``extra='forbid'`` turns every typo into a hard stop, and the most common typo is a near-miss of a
+    real field, where only the spelling is missing.
     """
     import difflib
 

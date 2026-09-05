@@ -13,13 +13,11 @@ from src.camera.setup.quality import configure_camera_for_quality
 # ------------------------------------------------------------------
 
 class SingleDeviceStreamer:
-    """
-    Runtime streamer for a single stereo camera that outputs a combined frame
-    (side-by-side or top-bottom) which is split into left/right images.
+    """Runtime streamer for a single stereo camera that outputs one combined frame
+    (side-by-side or top-bottom), split into left/right images.
 
-    Uses configure_camera_for_quality() for consistent quality settings,
-    supports optional cropping before splitting, and can resize per-eye
-    images to the target resolution.
+    Quality settings come from configure_camera_for_quality(). Optional cropping is
+    applied before the split, and each eye can be resized to the target resolution.
     """
 
     def __init__(self, config: SingleDeviceRigConfig):
@@ -88,8 +86,7 @@ class SingleDeviceStreamer:
     # ------------------------------------------------------------------
 
     def grab(self) -> StereoFrame:
-        """
-        Grab a combined frame, split it, and return left/right images.
+        """Grab a combined frame, split it, and return left/right images.
 
         Returns:
             StereoFrame with .left and .right BGR images.
@@ -169,8 +166,8 @@ class SingleDeviceStreamer:
         left: np.ndarray,
         right: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
-        # per_eye_frame_size is (width, height); cv.resize below wants (w, h),
-        # so this order is correct, do not swap.
+        # per_eye_frame_size is (width, height), the order cv.resize below wants.
+        # Do not swap.
         tw, th = self.per_eye_frame_size
 
         def _resize_if_needed(img: np.ndarray, side: str) -> np.ndarray:

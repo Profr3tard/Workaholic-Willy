@@ -2,8 +2,7 @@
 
 Production runs on CUDA whenever a GPU is present, while tests and developer
 machines fall back to CPU, or to MPS on Apple silicon. The selection can be
-forced with the ``WILLY_DEVICE`` environment variable, which is what CI and the
-test suite use:
+forced with the ``WILLY_DEVICE`` environment variable:
 
     WILLY_DEVICE=cpu     pytest -q       force CPU
     WILLY_DEVICE=cuda    python ...      error if CUDA is missing
@@ -14,11 +13,10 @@ test suite use:
 device with pinned memory and non-blocking copies.
 
 Both selections are silent to the caller and both change how fast, and
-sometimes whether, a model runs. So both are logged to
-``logs/utility/device.log``: the chosen device at info, which is the first thing
-anyone asks when inference is slow, the dtype detail at debug, and the two
-silent downgrades, auto-to-CPU and half-precision-to-fp32, at warning, because
-neither is anything the caller asked for.
+sometimes whether, a model runs, so both are logged to
+``logs/utility/device.log``: the chosen device at info, the dtype detail at
+debug, and the two downgrades the caller did not ask for, auto to CPU and half
+precision to fp32, at warning.
 """
 
 from __future__ import annotations
@@ -91,8 +89,8 @@ def get_device(prefer: str | None = None) -> torch.device:
     if torch.backends.mps.is_available():
         _log().info("device: pref=auto -> mps")
         return torch.device("mps")
-    # Production is expected to find a GPU. Landing on CPU is not an error and
-    # not a preference the operator expressed; it is a silent order-of-magnitude
+    # Production is expected to find a GPU. Landing on CPU is neither an error
+    # nor a preference the operator expressed, but a silent order-of-magnitude
     # slowdown, which is what warning is for.
     _log().warning(
         "device: pref=auto found neither CUDA nor MPS -> cpu; model inference will be slow"
@@ -136,9 +134,9 @@ def resolve_torch_dtype(
     dtype = mapping[key]
     if dtype != torch.float32 and device.type != "cuda":
         # Half precision on CPU and MPS is rarely a win and often errors out.
-        # The override is invisible to the caller, so it has to be visible here:
-        # a model configured fp16 that ran fp32 explains a lot of otherwise
-        # baffling accuracy and latency differences later.
+        # The override is invisible to the caller, so it is logged: a model
+        # configured fp16 that ran fp32 explains later accuracy and latency
+        # differences.
         _log().warning(
             "dtype: configured %r downgraded to float32; the %s backend cannot use "
             "half precision",
@@ -174,8 +172,8 @@ def move_inputs_to_device(
         else:
             out[k] = v
     # Counted rather than logged per tensor: this runs once per inference, and
-    # the interesting fact is that pinning stopped working at all, so the copy
-    # silently became blocking, not which of half a dozen tensors it was.
+    # what matters is that pinning failed at all, so the copy silently became
+    # blocking, not which tensor it was.
     if pin_failures:
         _log().debug(
             "move_inputs_to_device: %d of %d entries could not be pinned; "

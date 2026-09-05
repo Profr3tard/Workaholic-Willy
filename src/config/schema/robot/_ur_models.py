@@ -2,17 +2,12 @@
 
 The canonical lower-case model key ("ur5e", "ur3e", ...) is the single string the whole stack keys
 off: the safety DH table (``safety/_ur_kinematics.py``), the exact-mesh bundle
-(``{key}_collision_meshes.npz``), the cuRobo robot config (``{key}.yml``), the Isaac USD + Lula config,
-and ``safety.self_collision.kinematics_model``.
+(``{key}_collision_meshes.npz``), the cuRobo robot config (``{key}.yml``), the Isaac USD + Lula
+config, and ``safety.self_collision.kinematics_model``. A UR3e whose config says "ur5e" silently
+resolves another robot's link lengths in every one of those lookups, on real hardware.
 
-It lives here rather than in one vendor's schema because both the simulated cell and the real UR cell
-have to name a model, and they must agree about which names exist. A UR3e whose config says "ur5e"
-resolves another robot's link lengths in every one of the lookups above, silently. On real hardware
-that is not a cosmetic error.
-
-Kept in the config layer (the bottom of the dependency stack, so it must not import the driver
-package) and held in lockstep with the driver-side registry
-``src.robot.drivers.sim.robot_models._UR_MODELS``.
+The list sits in the config layer, the bottom of the dependency stack, so it must not import the
+driver package. It is held in lockstep with ``src.robot.drivers.sim.robot_models._UR_MODELS``.
 """
 
 from __future__ import annotations

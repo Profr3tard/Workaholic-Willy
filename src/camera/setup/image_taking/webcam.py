@@ -9,12 +9,11 @@ from src.camera.setup.quality import configure_camera_for_quality
 
 
 class WebcamPairStreamer:
-    """
-    Runtime streamer for a webcam stereo pair.
+    """Runtime streamer for a webcam stereo pair.
 
     Opens two USB cameras, applies identical quality settings via
-    configure_camera_for_quality(), and provides synchronised frame capture
-    using grab/retrieve to minimise temporal offset.
+    configure_camera_for_quality(), and captures both with grab before retrieve to
+    minimise the temporal offset between the eyes.
     """
 
     def __init__(self, config: WebcamPairRigConfig):
@@ -81,8 +80,7 @@ class WebcamPairStreamer:
     # ------------------------------------------------------------------
 
     def grab(self) -> StereoFrame:
-        """
-        Grab + retrieve a synchronised stereo frame pair.
+        """Grab + retrieve a synchronised stereo frame pair.
 
         Returns:
             StereoFrame with .left and .right BGR images.

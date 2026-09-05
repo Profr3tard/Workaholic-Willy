@@ -1,9 +1,8 @@
 """Typed schema for the locked KPI thresholds.
 
-The artefact lives at
-``config/robot/kpi_thresholds.yaml`` and is loaded by
-the T7 soak invariant test. Operators may override any value
-per-deployment without code changes.
+The artefact lives at ``config/robot/kpi_thresholds.yaml``.
+Operators may override any value per-deployment without code
+changes.
 
 All "rate" fields use the unit interval (``[0, 1]``). The
 ``median_cycle_time_increase_pct_max`` is expressed as a percentage

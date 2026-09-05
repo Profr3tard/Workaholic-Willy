@@ -1,20 +1,19 @@
 """An RGB-D ArUco marker source for the hand-eye routine's ``marker_source`` seam.
 
 ``CalibrationRoutine`` accepts an injected ``MarkerPoseProvider = Callable[[], Optional[np.ndarray]]``
-(``robot/execution/calibration.py``) that overrides the default stereo-rectified path. The two sim
-runners fill it with an Isaac source; a real eye-to-hand d435 rig had nothing to fill it with,
-because the shipped default assumes a stereo rig and ``FrameProvider`` raises for an RGB-D one. This is that
-missing piece: grab a colour frame, detect the board with the generic mono ``ArucoPoseEstimator``
-(detect + ``SOLVEPNP_IPPE_SQUARE``), return ``T_cam_to_marker`` (4x4) or ``None``.
+(``robot/execution/calibration.py``) that overrides the default stereo-rectified path. That default
+assumes a stereo rig and ``FrameProvider`` raises for an RGB-D one, so an eye-to-hand D435 rig needs a
+source of its own: grab a colour frame, detect the board with the generic mono ``ArucoPoseEstimator``
+(detect + ``SOLVEPNP_IPPE_SQUARE``), return ``T_cam_to_marker`` (4x4) or ``None``. The two sim runners
+fill the same seam with an Isaac source.
 
-It is glue, not new maths: ``ArucoPoseEstimator`` already exists and is unit-tested against synthetic
-markers; the routine's consumption side is finished and fail-closed. The streamer is duck-typed
-(``grab`` / ``get_intrinsics`` / ``get_distortion``), so this module imports no camera code and no
-``pyrealsense2``, since the real streamer is injected by the bring-up runner.
+``CalibrationRoutine`` consumes the provider fail-closed. The streamer is duck-typed (``grab`` /
+``get_intrinsics`` / ``get_distortion``), so this module imports no camera code and no
+``pyrealsense2``; the real streamer is injected by the bring-up runner.
 
-Honesty: bucket (2). Unit-tested offline against a rendered marker (real evidence before September), but
-never run against a physical d435. The distortion path (decision D1) is exercised but the on-aligned-
-stream coefficients are ~0, so a real bench must confirm the residual.
+Honesty bucket (2): unit-tested offline against a rendered marker, never run against a physical D435.
+The distortion path (decision D1) is exercised, but the coefficients on an aligned stream are ~0, so
+the residual is unconfirmed on a real bench.
 """
 
 from __future__ import annotations
@@ -42,7 +41,7 @@ class RGBDArucoMarkerSource:
     target_id
         The marker id to pose. A single id keeps the provider's return an ``Optional[np.ndarray]``.
     intrinsics, distortion
-        Decision **D1**: leave ``None`` to use the streamer's factory k/dist, or pass a bench-calibrated
+        Decision D1: leave ``None`` to use the streamer's factory K/dist, or pass a bench-calibrated
         pair (e.g. from :func:`camera.setup.image_taking.intrinsics.load_intrinsics`) to override. The
         source is recorded on ``intrinsics_source`` for provenance.
     warmup_grabs
@@ -88,7 +87,7 @@ class RGBDArucoMarkerSource:
         else:
             dist = self._streamer.get_distortion()
             if dist is None:
-                dist = np.zeros(5)  # device reported none -> honest zero, not a fabricated value
+                dist = np.zeros(5)  # device reported none -> zeros, not a fabricated value
 
         result = self._estimator.estimate(bgr, np.asarray(k, dtype=np.float64), dist, target_id=self._target_id)
         # With a target_id, estimate() returns a single 4x4 or None, exactly the MarkerPoseProvider shape.

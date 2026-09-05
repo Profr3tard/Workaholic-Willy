@@ -14,8 +14,8 @@ __all__ = ["proj_to_K", "unit_scaling", "validate_image_pair_shapes"]
 def unit_scaling(unit: str) -> float:
     """Return the multiplier that converts millimetres into ``unit``.
 
-    Calibration keeps its historical exception type while delegating the
-    actual scaling table to :mod:`src.utility.unit_scaling`.
+    Delegates to :mod:`src.utility.unit_scaling` and re-raises an unknown unit
+    as :class:`CalibrationDataError`.
     """
     try:
         return _shared_unit_scaling(unit)
