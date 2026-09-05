@@ -20,7 +20,7 @@ CALIBRATION_LOG_DIR: Final[str] = "logs/calibration"
 #: Per-module log-file names. Kept separate (rather than the aggregate
 #: single-file pattern used by the robot package) because a calibration
 #: session touches exactly one of these workflows at a time, eye-hand or
-#: stereo, and the question afterwards is always "what did THAT solve see?".
+#: stereo, and the question afterwards is always "what did that solve see?".
 #: A run is a handful of lines per file, so one file per module stays greppable.
 EYE_HAND_CALIBRATOR_LOG_FILE: Final[str] = "eye_hand_calibrator.log"
 EYE_HAND_DATASET_LOG_FILE: Final[str] = "eye_hand_dataset.log"

@@ -1,6 +1,6 @@
-# SIM PROFILE overlay (WILLY_PROFILE=sim), deep-merged onto hand_eye.yaml.
+# Sim profile overlay (WILLY_PROFILE=sim), deep-merged onto hand_eye.yaml.
 # Hand-eye calibration tuning for the Isaac sim cell. marker_length_mm + aruco_dict_name are the
-# SINGLE SOURCE OF TRUTH for the rendered ArUco board (willy_sim builds a board to match). Values
+# Single source of truth for the rendered ArUco board (willy_sim builds a board to match). Values
 # unchanged from the validated ETH/EIH calibration runs; only the diverging keys are listed.
 hand_eye:
   # Eye-to-hand: fixed overhead camera, marker on the tool -> Transform(CAMERA -> BASE).

@@ -1,11 +1,11 @@
 # ============================================================================
-# RL x DATAGEN   --profile rl_datagen        (see .ai-memory/rl-datagen-arc.md)
+# RL x datagen   --profile rl_datagen        (see .ai-memory/rl-datagen-arc.md)
 #
 # Turns the U-stack ON so a pick over a datagen scene emits the fifteen feature keys the offline RL
 # ranking/candidate trainers read. Without this the trainers see `_project_feature(None) -> 0.0` for
 # thirteen of fifteen and degenerate, which is exactly what happened on 2026-07-17 and cost a day.
 #
-# MODE IS auto, AND IT IS NOT A PREFERENCE. Measured against the schema on 2026-08-19:
+# Mode is auto, and it is not a preference. Measured against the schema on 2026-08-19:
 #
 #     watchdog       apply_modes ('auto',)                      <- drift_severity, ood_flagged,
 #                                                                  degraded_mode_active
@@ -15,15 +15,15 @@
 #     fusion         no mode gate
 #     performance    no mode gate
 #
-# `watchdog` is auto-ONLY, so `auto` is the single mode under which all fifteen features are
+# `watchdog` is auto-only, so `auto` is the single mode under which all fifteen features are
 # reachable. Any other mode silently drops three of them to zero.
 #
-# THE MODE IS NOT A CONFIG KEY: `grasping.mode` does not exist and the loader rejects it (measured).
-# It is chosen where the service is built, so the runner passes GraspMode.AUTO. This is the
+# The mode is not a config key: `grasping.mode` does not exist and the loader rejects it (measured).
+# It is chosen where the service is built, so the runner passes GraspMode.auto. This is the
 # `--mode` vs `--grasp-mode` trap from docs/grasping-config-reference.md section 3: a profile that looks
 # complete can still run in the wrong mode, and then most of the blocks below are inert.
 #
-# THIS PROFILE IS FOR DATA GENERATION, NOT FOR A CELL. It enables blocks the shipped tree keeps off
+# This profile is for data generation, not for a cell. It enables blocks the shipped tree keeps off
 # on purpose, and it is pointed at scenes on disk, not at a robot. Do not layer it onto `ursim` or a
 # real profile.
 # ============================================================================
@@ -47,33 +47,33 @@ robot:
     decision:
       enabled: true         # the AUTO gate itself; also the source of decision_latency_ms
 
-    # THE ONE COMPONENT WITH A MEASURED ADVANTAGE THAT HAD NEVER SCORED A REAL CANDIDATE.
+    # The one component with a measured advantage that had never scored a real candidate.
     # `held_jaw_v1` reaches AUROC 0.8947 out of fold on 13,788 rows across 863 object groups, against
     # a width-only baseline of 0.7769, and it shipped as the schema default with `enabled: false`.
     # It changes NO ordering and NO decision; it stamps `deep_ranker_*` telemetry saying what it would
-    # have chosen. Turned on HERE, in the offline feature sweep, because that runs the real pick path
+    # have chosen. Turned on here, in the offline feature sweep, because that runs the real pick path
     # on CPU without an Isaac box.
     deep_ranker:
       enabled: true
 
     fusion:
       enabled: true         # the shadow voxel substrate
-      # MEASURED, not guessed: on bin_000009 the WRIST depth starts at 55 mm, below the shipped
+      # Measured, not guessed: on bin_000009 the wrist depth starts at 55 mm, below the shipped
       # 80 mm floor: the camera is close in these scenes. Left at 80 it would clip real surface off
       # the nearest view, which is the one with the best look at the target.
       depth_min_mm: 40.0
       geometry:
         enabled: true       # fuse each object across cameras and change the CANDIDATES
-        # THE ONE SETTING HERE THAT IS A COST KNOB, AND IT IS SET FOR THIS PROFILE ONLY.
-        # MEASURED 2026-08-19 on bin_000009: `_fused_scene` took 182.7 s of a 187 s pick, because
+        # The one setting here that is a cost knob, and it is set for this profile only.
+        # Measured 2026-08-19 on bin_000009: `_fused_scene` took 182.7 s of a 187 s pick, because
         # the overlap metric is chunked brute force over clouds it documents as "a few thousand
         # points at most", and one datagen object's cloud is 37,119 points. Decimating for the
-        # MATCH DECISION only leaves the fused cloud the generator plans on at full resolution.
+        # Match decision only leaves the fused cloud the generator plans on at full resolution.
         # Default is 0.0 (off): no shipped cell is affected by this line existing.
         score_voxel_mm: 4.0
-      # `cameras` stays EMPTY on purpose. It is the config source `build_config_frame_resolvers`
+      # `cameras` stays empty on purpose. It is the config source `build_config_frame_resolvers`
       # normally builds resolvers from, and it is fail-closed on calibration artifacts. Datagen's
-      # extrinsics live per SCENE in scene.json, and the wrist camera moves with the posed arm, so
+      # extrinsics live per scene in scene.json, and the wrist camera moves with the posed arm, so
       # they are not a cell constant at all. The runner supplies `camera_frame_resolvers` directly,
       # which is what the pick loop actually reads (verified at pick_loop.py:1712).
 
@@ -90,16 +90,16 @@ robot:
       enabled: true         # ranking_latency_ms, fusion_latency_ms, decision_latency_ms
 
   # --- the behaviour policy -----------------------------------------------------------------------
-  # `rl_shadow` is what BUILDS the shadow router, and the router is what populates
+  # `rl_shadow` is what builds the shadow router, and the router is what populates
   # `_candidate_log`, the per-candidate 15-key feature rows this whole arc is here to collect.
   # Without it the records carry no per-candidate features at all.
   #
   # The bootstrap that makes this non-circular: with no artifact paths set, the router falls back to
-  # the COMMITTED baselines (v2_candidate / v3_ranking). Those are the degenerate policies that abstain
-  # honestly, which is fine and in fact correct here. They are the BEHAVIOUR policy: what generated
+  # the committed baselines (v2_candidate / v3_ranking). Those are the degenerate policies that abstain
+  # honestly, which is fine and in fact correct here. They are the behaviour policy: what generated
   # the data. Training a better one from data the old one produced is exactly what off-policy offline
   # RL is for, and the alternative (train on data the new policy chose) is the on-policy trap.
-  # NAMED EXPLICITLY, because the schema refuses `rl_shadow` without `policy_id` + `artifact_path`.
+  # Named explicitly, because the schema refuses `rl_shadow` without `policy_id` + `artifact_path`.
   # That refusal is right and worth keeping: a cell running a shadow policy nobody can name is a cell
   # whose telemetry cannot be attributed afterwards. The implicit fallback to these same files exists
   # in `maybe_build_shadow_router`, and writing them out is strictly better than relying on it.

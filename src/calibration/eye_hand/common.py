@@ -92,7 +92,7 @@ class BaseEyeHandCalibrator:
     ) -> bool:
         """Validate and append a sample, returning False for skipped detections."""
         if T_cam_to_marker is None:
-            # A skipped detection is a silent `False` to the caller, so the REASON only
+            # A skipped detection is a silent `False` to the caller, so the reason only
             # survives here; the robot-level routine just sees "sample rejected".
             logger.info("Sample skipped: no marker pose (marker_id=%d).", marker_id)
             return False

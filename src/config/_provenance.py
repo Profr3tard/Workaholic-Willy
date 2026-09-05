@@ -1,7 +1,7 @@
 """Where did this config value come from: which file, which line, which profile layer?
 
 The loader reads up to a dozen YAML files, deep-merges a chain of profile overlays onto each, and hands
-back plain Python values. That merge is lossless about VALUES and total about ORIGIN: ``_deep_merge``
+back plain Python values. That merge is lossless about values and total about origin: ``_deep_merge``
 returns ``42`` with no memory of which of four files said ``42``. For a single-file config that costs
 nothing. With ``WILLY_PROFILE=sim,ur3e,tiltcam`` it means the system cannot answer the two questions a
 user actually has: *which layer set this?* and *why this number?* Neither can its error messages.
@@ -14,7 +14,7 @@ The measured symptom: a typo in ``robot.sim.yaml`` produced
 naming the *directory*, so the reader has to guess which of the layered files carries it, while
 ``loader.py``'s own module docstring promised "the message always names the offending file".
 
-This module is that memory. It is a SIDE-CAR: a second, read-only walk over the same files the loader
+This module is that memory. It is a side-car: a second, read-only walk over the same files the loader
 walks, recording a line mark per leaf. It never participates in the merge, so a bug here cannot change a
 single loaded value; the worst it can do is fail to explain one.
 
@@ -77,7 +77,7 @@ def section_sources(root: Path) -> list[tuple[Path, str, str]]:
 
 
 def index_origins(root: Path, layers: tuple[str, ...] = ()) -> dict[str, Origin]:
-    """Map each dotted config key to the file/line/layer whose value WINS.
+    """Map each dotted config key to the file/line/layer whose value wins.
 
     Layers are applied in the loader's order (base first, then each profile layer left to right), so a
     later write simply overwrites the earlier record: the same precedence, tracked instead of forgotten.
@@ -92,7 +92,7 @@ def index_origins(root: Path, layers: tuple[str, ...] = ()) -> dict[str, Origin]
     # file with no base counterpart (the loader allows that), so the whole directory is walked.
     models_dir = root / "models"
     if models_dir.is_dir():
-        # Base files FIRST, then each layer in chain order. Walking the directory alphabetically instead
+        # Base files first, then each layer in chain order. Walking the directory alphabetically instead
         # would let `object.yaml` overwrite `object.sim.yaml` (s < y) and report the base as the winner
         # for a value the sim layer actually set, the exact class of wrong answer this module exists to
         # prevent, so the ordering is asserted by a test.
@@ -111,7 +111,7 @@ def _index_file(
 ) -> None:
     """Record a line mark for every leaf in ``path``. Unreadable/!mapping files are skipped, not raised.
 
-    Skipping rather than raising is deliberate: this runs while the loader is ALREADY reporting an
+    Skipping rather than raising is deliberate: this runs while the loader is already reporting an
     error, and an explainer that throws on the way to explaining is worse than one that says less.
     """
     try:
@@ -153,7 +153,7 @@ def _walk(node: Any, prefix: str, path: Path, layer: str, out: dict[str, Origin]
 def index_chains(root: Path, layers: tuple[str, ...] = ()) -> dict[str, list[Origin]]:
     """Every write of every key, in loader order, not just the one that won.
 
-    The winner alone answers "where is this set"; the CHAIN answers "what did I override, and was my
+    The winner alone answers "where is this set"; the chain answers "what did I override, and was my
     layer even reached", which is the question someone debugging a profile stack actually has. Same walk
     as :func:`index_origins`, appending instead of overwriting, so the last entry is always the winner.
     """
@@ -184,10 +184,10 @@ def comment_above(origin: Origin) -> str:
     """The contiguous ``#`` block written immediately above ``origin``'s line, dedented.
 
     This is the whole reason the explainer is worth building. The YAML comments are not decoration:
-    they carry the measured WHY (*"MEASURED by sweeping the real planner: 6/6 up to 6 mm and 0/6 at
+    they carry the measured why (*"measured by sweeping the real planner: 6/6 up to 6 mm and 0/6 at
     10 mm"*), and the loader throws every one of them away at ``yaml.safe_load``. Harvesting the block
     at query time surfaces that evidence at the moment someone is confused about the value, and does it
-    WITHOUT moving a single character: the comment stays where its author put it.
+    Without moving a single character: the comment stays where its author put it.
     """
     try:
         lines = origin.file.read_text(encoding="utf-8").splitlines()

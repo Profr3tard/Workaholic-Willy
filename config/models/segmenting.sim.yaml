@@ -1,5 +1,5 @@
-# SIM PROFILE overlay (WILLY_PROFILE=sim), deep-merged onto segmenting.yaml.
-# SAM2 for the sim real-vision (M2) path: downloaded from HF (local:false) on first run.
+# Sim profile overlay (WILLY_PROFILE=sim), deep-merged onto segmenting.yaml.
+# Sam2 for the sim real-vision (M2) path: downloaded from HF (local:false) on first run.
 # Only the segmenter entry diverges; `segmenter_backend`/`oneformer` are inherited from the base file.
 segmenter:
   model_path: ""

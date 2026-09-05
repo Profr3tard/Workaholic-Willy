@@ -1,10 +1,10 @@
 """Recursive mapping-merge used by the config loader.
 
-``src.robot.grasping.replay.presets`` keeps its OWN ``_deep_merge`` deliberately: its
-None/Mapping/deepcopy semantics are a genuinely different contract (it does NOT keep-base on a ``None``
+``src.robot.grasping.replay.presets`` keeps its own ``_deep_merge`` deliberately: its
+None/Mapping/deepcopy semantics are a genuinely different contract (it does not keep-base on a ``None``
 overlay leaf), so it is intentionally not folded here.
 
-Contract: a ``None`` overlay leaf KEEPS the base value (a partial overlay can omit-by-null without wiping
+Contract: a ``None`` overlay leaf keeps the base value (a partial overlay can omit-by-null without wiping
 fields). Profile overlays that need to *reset* a base field to ``None``
 use the loader's explicit reset sentinel instead (see ``src/config/loader.py``); it never reaches this
 merge as ``None``.

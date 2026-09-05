@@ -17,7 +17,7 @@ class URConfig(StrictModel):
     siblings under ``robot:`` so each driver owns its own typed surface.
     """
 
-    #: Which UR this cell drives. NOT cosmetic: the model keys the safety DH chain, the exact-mesh
+    #: Which UR this cell drives. Not cosmetic: the model keys the safety DH chain, the exact-mesh
     #: collision bundle, and the cuRobo robot config. Before this existed, a real UR3e was planned and
     #: collision-checked against UR5e link lengths (a2/a3 -425/-392.2 mm vs -243.55/-213.2) with nothing
     #: anywhere saying so, on real hardware. Default "ur5e" keeps every existing cell unchanged.
@@ -34,8 +34,8 @@ class URConfig(StrictModel):
     # ur_rtde; "ik" is the controller's calibrated IK and a moveJ/moveL straight line, which knows
     # nothing about the cell and will drive through anything in it.
     #
-    # The "curobo" path is FAIL-CLOSED: with the planner unavailable the move returns
-    # CONTROLLER_REJECTED and with no collision-free plan it returns TIMEOUT. It never degrades to
+    # The "curobo" path is fail-closed: with the planner unavailable the move returns
+    # CONTROLLER_REJECTED and with no collision-free plan it returns timeout. It never degrades to
     # blind IK, so a cell with no cuRobo environment does not move at all rather than moving blindly.
     # That is the point of the default; `python -m src.robot.safety.planning --doctor` is how
     # you check before commissioning.

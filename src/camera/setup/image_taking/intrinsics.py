@@ -1,11 +1,11 @@
 """Read a stored camera intrinsics file back into ``(K, dist)``.
 
-The RealSense streamer WRITES ``intrinsics.json`` (``_export_intrinsics``) but, until now, nothing read
+The RealSense streamer writes ``intrinsics.json`` (``_export_intrinsics``) but, until now, nothing read
 it back: ``grep intrinsics_file`` found only the schema and the writer. This is the missing loader, and
-the read side of decision **D1** (offer BOTH factory and calibrated intrinsics):
+the read side of decision **D1** (offer both factory and calibrated intrinsics):
 
-  * FACTORY: the device's own ``get_intrinsics()`` / ``get_distortion()``, live after ``open()``.
-  * CALIBRATED: an ``intrinsics.json`` produced either by the streamer's factory export or by a bench
+  * Factory: the device's own ``get_intrinsics()`` / ``get_distortion()``, live after ``open()``.
+  * Calibrated: an ``intrinsics.json`` produced either by the streamer's factory export or by a bench
     ``cv2.calibrateCamera`` run. This loader reads whichever is on disk.
 
 A consumer that wants the factory K uses the streamer directly; one that wants a bench-calibrated K

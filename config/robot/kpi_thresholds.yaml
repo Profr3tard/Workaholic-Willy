@@ -2,10 +2,10 @@
 # Edit values per deployment; the schema lives at
 # src/config/schema/robot/kpi_schema.py.
 #
-# THREE MORE GATES WERE LOCKED AND NEVER MECHANISED, and they are written down here because the
+# Three more gates were locked and never mechanised, and they are written down here because the
 # document that held them is being deleted. They came from the Phase T plan's clause list, which
 # carried ten gates; the seven below are the ones with a fixed bound, and a fixed bound is the only
-# kind this file can express. These three are DELTA gates: each one compares against a T0 baseline
+# kind this file can express. These three are delta gates: each one compares against a T0 baseline
 # run, and nothing in the repo computes that comparison. Recording them as live keys would imply a
 # check that does not exist, so they sit here as the target they always were.
 #

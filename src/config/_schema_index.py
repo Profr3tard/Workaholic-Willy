@@ -1,12 +1,12 @@
 """Every field the schema accepts, including the ones no YAML mentions.
 
-Reading the YAML tells you what someone chose. It does NOT tell you what you are allowed to choose:
+Reading the YAML tells you what someone chose. It does not tell you what you are allowed to choose:
 measured, 107 schema fields appear in no shipped YAML at all, among them ``robot.ur.model``, the field
 that decides whether a real UR3e is planned and collision-checked as a UR3e or as a UR5e. Grepping the
 YAML for "gripper" likewise finds five hits and misses the entire suction end-effector.
 
 So a user reasonably concludes the config surface is what the files show, and it is not. This module is
-the other half: a flat, dotted index of the SCHEMA (type, constraints, default and description for
+the other half: a flat, dotted index of the schema (type, constraints, default and description for
 every field), derived from ``AppConfig.model_json_schema()`` rather than hand-maintained, so it cannot
 fall out of date with the models.
 
@@ -171,7 +171,7 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
 
         Some annotations arrive as an unresolved ForwardRef string (``"X | None"``) because the schema
         modules use ``from __future__ import annotations`` and pydantic never needed to rebuild them.
-        Resolving it against the DECLARING module's namespace is what lets the walk reach, e.g.,
+        Resolving it against the declaring module's namespace is what lets the walk reach, e.g.,
         ``recovery.fixture``; otherwise the whole block reads as undocumented for a typing reason.
         """
         import sys as _sys
@@ -199,7 +199,7 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
     for i, part in enumerate(path_parts):
         # `*` marks a dict-of-models level and is not a field of its own: the descent already happened
         # on the segment before it. `objects[]` IS a field whose items are models, so it must be
-        # descended THROUGH: skipping it looked for the item's fields on the CONTAINING model and found
+        # descended through: skipping it looked for the item's fields on the containing model and found
         # nothing, which is why every `objects[].*` field read as undocumented.
         if part == "*":
             continue
@@ -222,7 +222,7 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
 def field_doc(path: str) -> str:
     """The comment block written immediately above a field in its schema source, dedented.
 
-    Accepts BOTH ``#:`` (the Sphinx-style marker) and plain ``#``. The project uses both. Measured:
+    Accepts both ``#:`` (the Sphinx-style marker) and plain ``#``. The project uses both. Measured:
     ``robot.sim.robot_model`` carries a four-line plain-``#`` explanation of exactly the de-locking this
     field does, and a harvester that only took ``#:`` reported the field as undocumented. Prose above a
     field IS its documentation regardless of which marker its author reached for; being strict here
@@ -255,7 +255,7 @@ def field_doc(path: str) -> str:
             out.append(text[1:].strip() if text.startswith(":") else text.strip())
             i -= 1
         _ = start  # line numbers not needed; the block is what carries the meaning
-        # A TRAILING comment on the field's own line is the third style this project uses
+        # A trailing comment on the field's own line is the third style this project uses
         # (`name: str = "cube"  # identity handle for prompt-based selection`). Prefer the block above
         # when both exist (it is the longer form), but never lose the one-liner when it is all there is.
         return "\n".join(reversed(out)) or trailing
@@ -303,7 +303,7 @@ def _alias_pairs() -> dict[str, str]:
 
     The stereomatcher block keeps OpenCV's camelCase in YAML (``numDisparities``) behind snake_case
     attributes (``num_disparities``), the only aliased fields in the tree. The JSON schema knows only
-    the alias, so an ``explain`` of the attribute name reported NOT A KNOWN KEY while simultaneously
+    the alias, so an ``explain`` of the attribute name reported not a known key while simultaneously
     printing its value: a self-contradicting answer, which is worse than a missing one.
     """
     import typing
@@ -349,7 +349,7 @@ def alias_for(path: str) -> str | None:
 
 
 def model_doc(path: str) -> str:
-    """The docstring of the model that DECLARES ``path``, a fallback when the field has none.
+    """The docstring of the model that declares ``path``, a fallback when the field has none.
 
     A block's class docstring usually explains what the whole block is for, and often better than any
     per-field line could: ``VacuumGripperConfig`` explains that every one of its numbers is something

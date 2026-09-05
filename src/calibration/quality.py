@@ -6,16 +6,16 @@ A *band* maps a scalar error metric (RMSE) onto one of five labels:
     ``excellent`` < ``good`` < ``marginal`` < ``poor``  (+ ``unknown``)
 
 Bands are vendor-neutral. Each callsite chooses the appropriate
-:class:`QualityBands` subclass, and the two are NOT the same kind of number:
+:class:`QualityBands` subclass, and the two are not the same kind of number:
 
 * stereo intrinsics report a genuine reprojection RMSE, in pixels.
 * the hand-eye routines report ``HandEyeAXXB._residual_rmse``, the mean
   Frobenius norm ``mean ||A_i X - X B_i||_F``. That norm mixes the
   dimensionless rotation block with millimetre translation terms and scales
-  with ``|t_X|``, so it is a self-consistency score, NOT a distance. This
+  with ``|t_X|``, so it is a self-consistency score, not a distance. This
   docstring used to call it "translational RMSE in millimetres", which
   invites reading 2.5 as "2.5 mm of error", which it is not.
-  MEASURED on an exact, noise-free synthetic problem
+  Measured on an exact, noise-free synthetic problem
   (``docs/guide/snippets/rmse_sensitivity.py``): at ``|t_X| = 1096 mm`` a
   1-degree rotation error scores 7-12x worse than a 1 mm translation error.
 

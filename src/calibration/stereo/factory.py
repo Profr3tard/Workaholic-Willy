@@ -24,7 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover (typing only)
 
 __all__ = ["StereoRigFactory"]
 
-# The injected `self.logger` belongs to the OWNING rig (StereoCam3D) and keeps its existing
+# The injected `self.logger` belongs to the owning rig (StereoCam3D) and keeps its existing
 # lines; this module logger is the calibration package's own trail, carrying the timings,
 # sizes and artifact provenance you want when a rig comes up with the wrong geometry.
 logger = create_logger("StereoRigFactory", STEREO_FACTORY_LOG_FILE, log_dir=CALIBRATION_LOG_DIR)

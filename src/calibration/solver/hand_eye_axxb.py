@@ -42,7 +42,7 @@ Reference
 ---------
 Park, F. C. & Martin, B. J. (1994).
 "Robot sensor calibration: solving AX = XB on the Euclidean group."
-IEEE Trans. Robotics and Automation, 10(5):717-721.
+Ieee Trans. Robotics and Automation, 10(5):717-721.
 """
 
 from __future__ import annotations

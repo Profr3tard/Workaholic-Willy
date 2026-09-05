@@ -1,11 +1,11 @@
 """Asking the config about itself: what is this key, where was it set, and why that value?
 
-The config could always be READ. It could not be ASKED. With a profile chain merging several files into
+The config could always be read. It could not be asked. With a profile chain merging several files into
 one section, "read it" means opening four files and reconstructing a merge in your head, and even then
 the two questions that matter go unanswered:
 
   * **which layer set this?** ``_deep_merge`` returns the value and forgets the file.
-  * **why THIS number?** The YAML comments carry the measured evidence (*"6/6 up to 6 mm and 0/6 at
+  * **why this number?** The YAML comments carry the measured evidence (*"6/6 up to 6 mm and 0/6 at
     10 mm"*) and ``yaml.safe_load`` discards every one of them.
 
 There is a third question the files cannot answer at all: **what am I allowed to set?** 107 schema fields
@@ -46,7 +46,7 @@ _INDENT = "      "
 def _yaml_path(path: str) -> str:
     """The spelling the YAML (and therefore the provenance index) uses for ``path``.
 
-    The provenance index is keyed by what is WRITTEN in the file, so an aliased field must be looked up
+    The provenance index is keyed by what is written in the file, so an aliased field must be looked up
     under its alias or it is reported as "no YAML sets this" while the file plainly sets it,
     measured on all 7 camelCase stereomatcher keys.
     """
@@ -58,7 +58,7 @@ def _schema_lookup(index: dict[str, Any], path: str) -> Any:
     if field is not None:
         return field
     # The stereomatcher block keeps OpenCV's camelCase in YAML behind snake_case attributes, so a
-    # question asked with the ATTRIBUTE name must still find the field the schema knows by its alias.
+    # question asked with the attribute name must still find the field the schema knows by its alias.
     aliased = alias_for(path)
     if aliased is not None and aliased in index:
         return index[aliased]
@@ -224,17 +224,17 @@ def explain(
 def explain_in(cfg: Any, path: str, root: Path, layers: tuple[str, ...]) -> KeyExplanation:
     """Everything known about ``path`` IN ``cfg``: the read and the explanation, in one call.
 
-    **THIS EXISTS BECAUSE THE TWO CALLERS DISAGREED, AND THE CLASS BELOW COULD NOT STOP THEM.**
+    **This exists because the two callers disagreed, and the class below could not stop them.**
     :class:`KeyExplanation` was split out from its text (see its docstring) so the operator console
     and the terminal could not drift. They drifted anyway, one layer higher up: the drift was not in
-    how the answer is RENDERED but in what each caller found out before asking.
+    how the answer is rendered but in what each caller found out before asking.
 
     The console read the tree with ``edit.read_key``, which returns :data:`~src.config.edit.MISSING`
     for an absent path, and passed ``has_value`` explicitly. The CLI used its own walker, which
     returned ``None`` for both "absent" and "the value is None", so it let ``has_value`` default to
     ``value is not None``.
 
-    MEASURED on the default tree: **45 of 468 keys hold ``None``**, and for every one of them::
+    Measured on the default tree: **45 of 468 keys hold ``None``**, and for every one of them::
 
         CLI      camera.cameras.active_rig_id
         console  camera.cameras.active_rig_id = None
@@ -242,7 +242,7 @@ def explain_in(cfg: Any, path: str, root: Path, layers: tuple[str, ...]) -> KeyE
     One reads as "nobody set this", the other as "this is set to null". Both were produced from the
     same function, from the same tree, about the same key.
 
-    **SO THE FIX IS A FUNCTION THAT CANNOT BE CALLED TWO WAYS.** Neither caller supplies ``value``
+    **So the fix is a function that cannot be called two ways.** Neither caller supplies ``value``
     or ``has_value`` any more, because neither is trusted to derive them. :func:`explain` keeps both
     parameters for a caller that genuinely holds a value the tree does not (a proposed write, a
     value from a form), which is a different question and deserves a different door.
@@ -266,7 +266,7 @@ def explain_key(
 
 
 def find_keys(needle: str, limit: int = 40, tier: str | None = None) -> str:
-    """Search the SCHEMA (not the YAML) for keys matching ``needle``.
+    """Search the schema (not the YAML) for keys matching ``needle``.
 
     Searching the schema is the point: the files only contain what someone chose, so grepping them for
     "gripper" returns five hits and misses the whole suction end-effector. The schema knows all 558.
@@ -322,13 +322,13 @@ def decisions(
     cfg: Any, root: Path, layers: tuple[str, ...],
     section: str | None = None, tier: str | None = None,
 ) -> str:
-    """Only the values that DIFFER from their schema default: the decisions someone actually made.
+    """Only the values that differ from their schema default: the decisions someone actually made.
 
     Measured: 3 of 310 robot leaves differ from the schema default, so a 448-line ``robot.yaml`` encodes
     three decisions and 307 restatements. ``--print`` dumps all 876 lines of the tree with no way to tell
     the two apart, which is why reading the config does not tell you what the cell was configured to do.
 
-    Comparing against the SCHEMA INDEX rather than against a default-constructed ``AppConfig`` is
+    Comparing against the schema index rather than against a default-constructed ``AppConfig`` is
     deliberate and necessary: ``AppConfig()`` is not constructible (``camera`` and ``models`` are
     required), so there is no all-defaults tree to diff against. The index has every default anyway.
 
@@ -350,7 +350,7 @@ def decisions(
         chain = chains.get(_yaml_path(path), [])
         where = chain[-1].location(root) if chain else "(not in any YAML: set by a validator or code)"
         # `decided=True` by construction: everything reaching here already differs from its default.
-        # The gate state uses the LOADED values, so a sim cell's own fields are not called "advanced"
+        # The gate state uses the loaded values, so a sim cell's own fields are not called "advanced"
         # merely because the block defaults to disabled.
         name = tier_for(
             field.path, required=field.required, decided=True,

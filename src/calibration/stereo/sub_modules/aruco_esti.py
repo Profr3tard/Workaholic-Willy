@@ -91,7 +91,7 @@ class ArucoPoseEstimator:
             logger.debug("ArUco: no markers detected.")
             return {} if target_id is None else None
 
-        # cv.aruco.estimatePoseSingleMarkers was REMOVED in OpenCV >= 4.7 (we pin 4.13). Pose each
+        # cv.aruco.estimatePoseSingleMarkers was removed in OpenCV >= 4.7 (we pin 4.13). Pose each
         # detected marker with cv.solvePnP over its known square corners (mirrors willy_sim/hand_eye.py).
         half = self.marker_length / 2.0
         # cv2.aruco corner order is TL, TR, BR, BL -> object points with the marker +Z out of plane.

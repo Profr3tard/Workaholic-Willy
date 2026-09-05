@@ -6,7 +6,7 @@ Pure-numpy; no OpenCV dependency. Finds the rotation ``R`` and translation
 
 The algorithm is the closed-form SVD solution described in Umeyama (1991)
 "Least-Squares Estimation of Transformation Parameters Between Two Point
-Patterns", IEEE TPAMI 13(4):376-380.
+Patterns", ieee tpami 13(4):376-380.
 """
 
 from __future__ import annotations

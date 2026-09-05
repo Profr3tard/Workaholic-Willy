@@ -5,7 +5,7 @@ off: the safety DH table (``safety/_ur_kinematics.py``), the exact-mesh bundle
 (``{key}_collision_meshes.npz``), the cuRobo robot config (``{key}.yml``), the Isaac USD + Lula config,
 and ``safety.self_collision.kinematics_model``.
 
-It lives HERE rather than in one vendor's schema because BOTH the simulated cell and the real UR cell
+It lives here rather than in one vendor's schema because both the simulated cell and the real UR cell
 have to name a model, and they must agree about which names exist. A UR3e whose config says "ur5e"
 resolves another robot's link lengths in every one of the lookups above, silently. On real hardware
 that is not a cosmetic error.

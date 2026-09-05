@@ -1,12 +1,12 @@
 # ============================================================================
-# UR3e ROBOT LAYER, dual-purpose: a sim overlay AND a real-cell overlay.
+# UR3e robot layer, dual-purpose: a sim overlay and a real-cell overlay.
 #
 #   WILLY_PROFILE=sim,ur3e        sim UR3e cell (vendor: sim, from the `sim` layer)
-#   WILLY_PROFILE=ur3e            REAL UR3e cell (vendor: ur, from base robot.yaml)
+#   WILLY_PROFILE=ur3e            real UR3e cell (vendor: ur, from base robot.yaml)
 #   (or: any willy_sim runner with --robot-model ur3e)
 #
 # The loader applies profile layers left-to-right, so with `sim,ur3e` every
-# `*.sim.yaml` overlay merges first and this file then states ONLY what changes
+# `*.sim.yaml` overlay merges first and this file then states only what changes
 # because the arm is a UR3e instead of a UR5e. That is deliberate: the `sim` layer
 # carries measured values (notably the detector torch_dtype reset that small-object
 # recall depends on) and those must exist exactly once, not once per robot.
@@ -15,7 +15,7 @@
 # below are loaded-but-inert; what matters for a real arm is `ur.model`,
 # `workspace_limits`, `safe_pose` and the `safety.*` block.
 #
-# WHY ANYTHING CHANGES AT ALL: reach. A UR5e works a 850 mm sphere about its
+# Why anything changes at all: reach. A UR5e works a 850 mm sphere about its
 # shoulder; a UR3e works 500 mm. Every position in the sim cell was authored for
 # the UR5e, and most of them are simply untouchable by this arm, measured by
 # `willy_sim/harness/reach.py`, which runs before the Isaac boot:
@@ -23,17 +23,17 @@
 #   safe_pose (450, -300, 400)        r = 595 mm  ->  95 mm out of reach
 #   workspace corner (700,-350,600)   r = 902 mm  -> 402 mm out of reach
 #
-# So the cell is re-anchored CLOSER to the base. Every number below is stated with
+# So the cell is re-anchored closer to the base. Every number below is stated with
 # its radius about the UR3e shoulder (d1 = 151.85 mm above the base plane) as a
 # percentage of the 500 mm working sphere. Anything past ~85% is near-singular:
 # the arm is almost straight there and has little orientation freedom left, which
 # a top-down grasp needs.
 #
-# STATUS: geometry is (2)-analytical, derived from the datasheet reach, not yet
+# Status: geometry is (2)-analytical, derived from the datasheet reach, not yet
 # confirmed on-box. Arc 5 boots this cell and measures the pick rate.
 # ============================================================================
 robot:
-  # ARMS THE SELF-COLLISION GUARD for a real UR3e. Two reasons this line is load-bearing:
+  # Arms the self-collision guard for a real UR3e. Two reasons this line is load-bearing:
   #   1. Without it, ur.model stays at its "ur5e" default (ur_schema.py) while
   #      safety.self_collision.kinematics_model below is "ur3e"; the cross-field validator in
   #      robot_schema.py then refuses `WILLY_PROFILE=ur3e` at load (correct, but it means the layer
@@ -46,19 +46,19 @@ robot:
     model: "ur3e"
   sim:
     robot_model: "ur3e"
-    # The Isaac ur3e.usd ships BARE. Unlike ur5e/ur10e it bakes in no Robotiq
+    # The Isaac ur3e.usd ships bare. Unlike ur5e/ur10e it bakes in no Robotiq
     # variant (verified at byte level: no `Gripper` variant set, no `Robotiq`
-    # token). The 2F-85 is therefore MOUNTED as a standalone USD on the wrist and
+    # token). The 2F-85 is therefore mounted as a standalone USD on the wrist and
     # merged into the arm articulation. Same physical gripper as the UR5e cell, so
     # tcp_offset_mm (132 mm) and the gripper block are inherited unchanged.
     gripper_mount: "robotiq_2f85"
 
     # The park pose (arm swung clear of the overhead camera before perceiving) is inherited from the
-    # UR5e layer as [3.14, -1.0, 0.9, 0, 0, 0]. MEASURED, that pose puts a UR3e's grasp-centre TCP at
+    # UR5e layer as [3.14, -1.0, 0.9, 0, 0, 0]. Measured, that pose puts a UR3e's grasp-centre TCP at
     # r = 520 mm about its shoulder: 104% of its 500 mm working sphere, i.e. the arm fully extended
-    # and near-singular. (The same joints on a UR5e sit at 92.5%, comfortably inside.) Moving OUT of a
+    # and near-singular. (The same joints on a UR5e sit at 92.5%, comfortably inside.) Moving out of a
     # near-singular configuration is where IK stops converging, and the symptom is a non-deterministic
-    # MotionStatus.TIMEOUT: measured 4-8 of 10 real-vision picks, on byte-identical grasp candidates.
+    # MotionStatus.timeout: measured 4-8 of 10 real-vision picks, on byte-identical grasp candidates.
     #
     # This pose keeps the same -X swing (so the arm still clears the overhead camera's view of the
     # object) but folds the elbow: r = 328 mm = 66% of reach, world TCP (-269, -131, 284), and the
@@ -68,7 +68,7 @@ robot:
     # NOTE (honest): robot_prim_path stays "/World/UR5e" for now. It is a cosmetic
     # Isaac stage path (add_reference_to_stage mounts ur3e.usd there perfectly
     # well), but 9 runners hardcode the literal, so de-hardcoding it is its own
-    # change. The path is a LABEL here, not a claim about which arm is loaded.
+    # change. The path is a label here, not a claim about which arm is loaded.
 
     cameras:
       overhead:
@@ -81,23 +81,23 @@ robot:
       # which IS inside the sphere but at 94% of it, i.e. an almost-straight arm.
       object: { position_mm: [350.0, 0.0, 25.0] }
       table:  { position_mm: [350.0, 0.0, -200.0] }
-      # MEASURED on-box 2026-07-24: with the marker at the UR5e-derived (350,-150,6) the EIH
+      # Measured on-box 2026-07-24: with the marker at the UR5e-derived (350,-150,6) the EIH
       # calibration collected **0 of 24 samples**: every viewpoint was either workspace_rejected or
-      # ik_failed. The marker itself is reachable; the HEMISPHERE OF CAMERA VIEWPOINTS AROUND IT is
+      # ik_failed. The marker itself is reachable; the hemisphere of CAMERA viewpoints around it is
       # not. The wrist camera must stand off 235-275 mm from the marker and look back at it, so each
       # tool pose lands roughly (+115, 0, +134) mm from the marker, which pushed x to 441-501 mm and
       # y to -235 mm, outside this cell's box on both axes.
       #
       # The replacement was searched offline against the box + an 85%-of-reach ceiling (the same rule
       # the rest of this file uses) and confirmed on-box. Two values move, and only these two:
-      #   marker (350,-150) -> (150,-40)  the viewpoint CLUSTER is what has to fit, not the marker
+      #   marker (350,-150) -> (150,-40)  the viewpoint cluster is what has to fit, not the marker
       #   elevations 16/30 -> 20/35  buys 60 deg -> 70 deg of tool-orientation spread, which is what
       #                              conditions the AX=XB solve; the radii and azimuths are unchanged.
       # Two on-box measurements, and they disagree with the offline search; the measured numbers win:
-      #   (180,-60)  20/24 samples, rmse 0.0004 mm, PASS   worst viewpoint 90.2% of reach
-      #   (150,-40)  17/24 samples, rmse 0.0010 mm, PASS   worst viewpoint 83.4% of reach
+      #   (180,-60)  20/24 samples, rmse 0.0004 mm, pass   worst viewpoint 90.2% of reach
+      #   (150,-40)  17/24 samples, rmse 0.0010 mm, pass   worst viewpoint 83.4% of reach
       # The search predicted 24/24 for both. It does not model IK or motion success, only the box and the
-      # reach sphere, so trust it for DIRECTION (0/24 -> working) and not for tuning. (150,-40) ships: it
+      # reach sphere, so trust it for direction (0/24 -> working) and not for tuning. (150,-40) ships: it
       # is the only one of the two that clears the 90%-of-reach dexterity bar the layer tests enforce, and
       # 17 samples at rmse 0.001 mm / 0.003 mm vs the oracle is far past what the gate needs. The three
       # samples that costs are not worth sitting at the edge of the envelope, where this arm is documented
@@ -117,10 +117,10 @@ robot:
     z_min: 0.0
     z_max: 320.0
 
-  # Where `move_home()` sends this arm. MEASURED 2026-08-09: the shipped default (a UR5e-authored
+  # Where `move_home()` sends this arm. Measured 2026-08-09: the shipped default (a UR5e-authored
   # constant) puts a UR3e's grasp centre at z = 561.9 mm and r = 466.9 mm (93.4% of its 500 mm reach,
   # past the 85% this file treats as near-singular), while this cell's own workspace_limits stop at
-  # z = 320. So the natural FIRST motion on the bench left the declared box, and `move_home` warned and
+  # z = 320. So the natural first motion on the bench left the declared box, and `move_home` warned and
   # drove anyway. It now refuses instead, which is why this key has to exist.
   #
   # Chosen from a round-decimal grid (the same style as park_joint_positions) rather than an optimiser's
@@ -139,27 +139,27 @@ robot:
     z: 280.0
 
   calibration:
-    # MEASURED on-box 2026-07-24, reproduced. The eye-to-HAND pose generator samples the workspace box,
+    # Measured on-box 2026-07-24, reproduced. The eye-to-hand pose generator samples the workspace box,
     # and on this arm the full box is mostly untouchable: 16 of 22 poses came back status=timeout (the
     # near-singular failure documented for park_joint_positions above) and the routine collected 4
     # samples, not enough to solve. Restricted to the upper 50-90% of the z range it collects 9 and
-    # solves EXACTLY (rmse 0.0000 mm, quality excellent, GATE PASS). A UR5e needs no entry here: it
+    # solves exactly (rmse 0.0000 mm, quality excellent, gate pass). A UR5e needs no entry here: it
     # collects 17/22 on the full box.
     #
-    # ground_truth ONLY, deliberately. The same band applied to the ArUco source collapses it to 1/22
+    # ground_truth only, deliberately. The same band applied to the ArUco source collapses it to 1/22
     # with 21 timeouts: measured twice, at two different xy widths, so it is the band and not chance.
-    # The pose box is the sampler's RANGE, not a filter: moving a bound re-draws every pose, so the two
+    # The pose box is the sampler's range, not a filter: moving a bound re-draws every pose, so the two
     # sources land on unrelated pose sets and a band that helps one can wreck the other.
     #
     # UR3e ETH-ArUco therefore has NO validated setting yet: best measured is rmse 4.48 mm (marginal)
-    # at z 0.40-0.90 with a +-75 mm xy box, vs 6.44 mm (poor) shipped, on 8-11 samples. Left OPEN rather
+    # at z 0.40-0.90 with a +-75 mm xy box, vs 6.44 mm (poor) shipped, on 8-11 samples. Left open rather
     # than papered over: the September cell picks its real camera height and board size physically, and
     # that is the lever this is really about (the UR3e cannot lift the board as high, so its overhead
     # camera sees a smaller marker: ~790 mm away vs the UR5e's ~610 mm).
     pose_box_z_frac:
       ground_truth: [0.5, 0.9]
 
-  # MEASURED on-box 2026-07-24: the UR3e real-vision (M2) cell is 5/10 with a tangential top-down close
+  # Measured on-box 2026-07-24: the UR3e real-vision (M2) cell is 5/10 with a tangential top-down close
   # and 10/10 with a radial one (zero failures). A vision-detected grasp has a varying azimuth and this
   # arm cannot plan the tangential close at any azimuth (0/4 vs 4/4). It is an ARM property, so the cell
   # declares it here instead of every operator remembering `--radial-closing`. The UR5e absorbs both and
@@ -168,14 +168,14 @@ robot:
     isotropic_radial_closing: true
 
   safety:
-    # MUST track sim.robot_model: the self-collision guard picks its DH chain by
+    # Must track sim.robot_model: the self-collision guard picks its DH chain by
     # this key, and the UR3e's links are far shorter (a2/a3 = -243.55/-213.2 mm vs
     # the UR5e's -425/-392.2). Driving a UR3e against UR5e link lengths would place
     # every link somewhere it is not, so a cross-field validator in robot_schema.py
     # rejects the mismatch at load time rather than letting it run.
     self_collision:
       kinematics_model: "ur3e"
-      # The UR3e CANNOT absorb the UR5e's 10 mm planner margin. TWO SEPARATE on-box measurements, kept
+      # The UR3e cannot absorb the UR5e's 10 mm planner margin. Two separate on-box measurements, kept
       # apart here because they answer different questions:
       #   1. planner sweep: it plans 6/6 up to 6 mm, and 0/6 at 10 mm.
       #   2. pick campaign: an earlier build derived this value from min_distance_mm (10 mm here) and

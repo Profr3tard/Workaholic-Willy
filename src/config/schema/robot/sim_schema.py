@@ -18,7 +18,7 @@ class SimCameraSchema(StrictModel):
     ``src.robot.drivers.sim.config.SimCameraConfig``. The runtime
     converts this Pydantic model into the driver dataclass at
     arm-construction time. Kept intentionally minimal: any future
-    knobs SHOULD land on the driver dataclass first, then mirror here.
+    knobs should land on the driver dataclass first, then mirror here.
     """
 
     prim_path: str = Field(default="", min_length=0)
@@ -26,14 +26,14 @@ class SimCameraSchema(StrictModel):
     # --- Isaac authoring extras (read by src.willy_sim, not the bare driver) ---
     near_clip_m: float | None = Field(default=None, gt=0.0)
     resolution: tuple[int, int] | None = None
-    # Horizontal field of view (deg) to author the LENS from, i.e. the FOV of the real sensor this
-    # camera stands in for (an Intel RealSense D435's RGB stream is 69.4 deg). None keeps Isaac's default
-    # lens, which is NARROWER than a D435 and therefore frames a smaller slice of the table than the real
+    # Horizontal field of view (deg) to author the lens from, i.e. the FOV of the real sensor this
+    # camera stands in for (an Intel RealSense d435's RGB stream is 69.4 deg). None keeps Isaac's default
+    # lens, which is narrower than a d435 and therefore frames a smaller slice of the table than the real
     # cell will: a silent sim2real gap. See willy_sim/scene/cameras.py (D435_RGB_HFOV_DEG).
     hfov_deg: float | None = Field(default=None, gt=0.0, lt=180.0)
     # Fixed (eye-to-hand) cameras: world position in mm (None -> authored elsewhere).
     position_mm: tuple[float, float, float] | None = None
-    # Eye-in-hand cameras: mount in the wrist-link LOCAL frame (mm) + look-at aim + up hint.
+    # Eye-in-hand cameras: mount in the wrist-link local frame (mm) + look-at aim + up hint.
     mount_offset_mm: tuple[float, float, float] | None = None
     mount_aim_mm: tuple[float, float, float] | None = None
     mount_up_hint: tuple[float, float, float] | None = None
@@ -55,11 +55,11 @@ class SimObjectConfig(StrictModel):
     color: tuple[float, float, float] = (0.9, 0.2, 0.1)  # RGB 0-1; the VL colour disambiguation handle
     usd_asset_path: str | None = None  # relative /Isaac/... USD asset (YCB mesh); None -> DynamicCuboid
     # Spawn orientation (world, WXYZ); None -> identity. A referenced YCB authored lying (e.g. the soup
-    # can) is spawned UPRIGHT so it settles stable + reliably graspable. Ignored for procedural cubes.
+    # can) is spawned upright so it settles stable + reliably graspable. Ignored for procedural cubes.
     orientation_wxyz: tuple[float, float, float, float] | None = None
     # Collision approximation for a referenced NON-physics YCB mesh (the
     # /Isaac/Props/YCB/Axis_Aligned/ variants carry no collider/rigid-body, unlike Axis_Aligned_Physics/).
-    # None (default) -> author NOTHING (byte-identical: cubes + the pre-rigged Axis_Aligned_Physics YCB are
+    # None (default) -> author nothing (byte-identical: cubes + the pre-rigged Axis_Aligned_Physics YCB are
     # untouched). Set to "convexHull" (Isaac's own recipe for 003-006) or "convexDecomposition" to author
     # UsdPhysics on the mesh at runtime so it becomes a graspable rigid body. Ignored for procedural cubes.
     usd_collision_approximation: str | None = None
@@ -136,12 +136,12 @@ class SimConfig(StrictModel):
     step_dt_s: float = Field(default=1.0 / 60.0, gt=0.0, le=1.0)
     settle_timeout_s: float = Field(default=5.0, gt=0.0, le=120.0)
     headless: bool = True
-    # --- Isaac scene-authoring extras (read by src.willy_sim, NOT forwarded to the bare
+    # --- Isaac scene-authoring extras (read by src.willy_sim, not forwarded to the bare
     # driver dataclass; the "robot.sim" namespace owns the whole simulated work-cell). ---
     assets_root: str | None = None              # Isaac asset pack root (carb asset_root + scene build)
     gripper_variant: str = "Robotiq_2f_85"      # USD Gripper variant selection on the UR5e asset
     # When set (a key in willy_sim.grippers.MOUNTED_GRIPPERS, e.g.
-    # "schunk_egu50"), the scene builder selects the "None" UR5e Gripper variant and MOUNTS that standalone
+    # "schunk_egu50"), the scene builder selects the "None" UR5e Gripper variant and mounts that standalone
     # vendor gripper on the wrist instead (and the runtime drives it via the matching GripperProfile). None
     # (default) keeps the baked ``gripper_variant`` -> byte-identical for every existing cell.
     gripper_mount: str | None = None

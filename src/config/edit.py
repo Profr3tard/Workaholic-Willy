@@ -62,7 +62,7 @@ class WriteRefused(StrEnum):
     INVALID_VALUE = "invalid_value"
     #: The file the value would land in does not exist, or the key's section is not file-backed.
     NO_TARGET = "no_target"
-    #: The key decides WHICH machine moves, and something is currently connected to one.
+    #: The key decides which machine moves, and something is currently connected to one.
     CELL_CONNECTED = "cell_connected"
 
 
@@ -80,7 +80,7 @@ class Writable:
     #: because the same fact, the controller's address, lives under a different key per vendor, and
     #: showing an operator both would be showing them one field that does nothing.
     vendor: str = ""
-    #: True for values that decide WHICH machine moves or how it is driven, as opposed to what the tool
+    #: True for values that decide which machine moves or how it is driven, as opposed to what the tool
     #: weighs. Writable, but only with nothing connected; see :func:`set_keys`' ``connected`` guard.
     requires_disconnected: bool = False
 
@@ -380,7 +380,7 @@ def set_keys(
     profile: str | None = None,
     connected: bool = False,
 ) -> WriteResult:
-    """Write a group of measured values as ONE transaction: all of them land, or none do.
+    """Write a group of measured values as one transaction: all of them land, or none do.
 
     **The group is not a convenience, it is a correctness requirement.** The three ``tool_frame`` keys
     are a single measurement and the schema knows it: declaring ``source: "willy"`` while the offset is
@@ -392,13 +392,13 @@ def set_keys(
     ``profile`` is the chain string the reload runs under; ``layers`` is the same chain split, used to
     pick the target files.
 
-    **``layers`` and ``profile`` must describe the same chain.** Passing both BECAUSE the caller
+    **``layers`` and ``profile`` must describe the same chain.** Passing both because the caller
     holds both is what lets them disagree; deriving one from the other is what stops it. They are
     checked against each other before anything is written, and `ConfigTree.write()` derives them
     from one chain so the disagreeing call cannot be constructed at all.
     """
-    # **THE TWO ARGUMENTS THIS DOCSTRING WARNS ABOUT MUST NOW AGREE, AND IT IS CHECKED.**
-    # MEASURED 2026-09-04 on a scratchpad copy of the shipped tree:
+    # **the two arguments this docstring warns about must now agree, and it is checked.**
+    # Measured 2026-09-04 on a scratchpad copy of the shipped tree:
     #
     #     set_key("robot.safety.payload.mass_kg", 3.25, root=T, layers=("ur3e",), profile=None)
     #       -> applied=True, refused=None, values={"robot.safety.payload.mass_kg": 0.0}
@@ -406,11 +406,11 @@ def set_keys(
     # It picked the target file from layers[-1] and wrote `mass_kg: 3.25` into robot.ur3e.yaml
     # directly beneath a `max_mass_kg: 3.0` that forbids it, then validated the BASE tree because
     # `profile` said None, so no rollback fired. It reported success, read back the base tree's 0.0
-    # rather than the value it had written, and left the tree UNLOADABLE under its own layer, against
+    # rather than the value it had written, and left the tree unloadable under its own layer, against
     # this module's promise at the top of the file that exactly that cannot happen.
     #
-    # RAISED, NOT RETURNED AS A `WriteRefused`. Every member of that enum is something an
-    # operator did; this is something a CALLER did, and it cannot be reached through any UI. Handing
+    # Raised, not returned as a `WriteRefused`. Every member of that enum is something an
+    # operator did; this is something a caller did, and it cannot be reached through any UI. Handing
     # it back as a refusal would put a programming error in front of a person who cannot act on it.
     # `ConfigTree.write()` makes it unconstructible, which is the real fix; this is the guard for the
     # raw function that other callers still reach.
@@ -473,7 +473,7 @@ def set_keys(
         _base, top_key, prefix = section
         plan.append((key, value, path, top_key, key[len(prefix):].lstrip(".")))
 
-    # Snapshot every file the group touches BEFORE editing any of them; `None` marks one that did not
+    # Snapshot every file the group touches before editing any of them; `None` marks one that did not
     # exist, so a rollback deletes it instead of writing an empty file back.
     snapshot: dict[Path, str | None] = {
         path: (path.read_text(encoding="utf-8") if path.exists() else None)
@@ -525,15 +525,15 @@ def _reload(root: Path, profile: str | None) -> Any:
     """Load the tree exactly as a runner would, under ``profile``. Raises on anything the loader hates."""
     from .loader import load_config, reload_config  # noqa: PLC0415
 
-    # THE CHAIN IS AN ARGUMENT NOW. This used to set WILLY_PROFILE, call `reload_config()` to
-    # make the change take, load, then restore and reload AGAIN, so validating one write cleared
+    # The chain is an argument now. This used to set WILLY_PROFILE, call `reload_config()` to
+    # make the change take, load, then restore and reload again, so validating one write cleared
     # the cached tree of every other holder in the process, twice, whether or not anything went
     # wrong. `load_config(root, profile=...)` needs neither, because the cache is keyed per chain:
     # two profiles are two entries, not one entry fought over. This was the last library-code site
     # in this package that mutated the environment to ask a question.
     #
-    # ONE `reload_config()` STAYS, and it is load-bearing rather than leftover: this function
-    # runs AFTER bytes have been written to disk, and the cache would otherwise hand back the tree as
+    # One `reload_config()` stays, and it is load-bearing rather than leftover: this function
+    # runs after bytes have been written to disk, and the cache would otherwise hand back the tree as
     # it was before the edit, so a validating reload would validate the old file.
     reload_config()
     return load_config(root, profile=profile)
@@ -543,9 +543,9 @@ def _reload(root: Path, profile: str | None) -> Any:
 #: perfectly good value here: an unconfigured ``serial_number`` IS ``null``, and reporting that as
 #: "missing" would tell an operator their write vanished when it landed exactly as asked.
 #:
-#: NOT :data:`~src.contracts.UNSET`, and the difference is not pedantry. That sentinel
-#: means "the CALLER did not choose this", which is a question about an argument. This one means
-#: "the TREE does not have this path", which is a question about a lookup. One name for both would
+#: Not :data:`~src.contracts.UNSET`, and the difference is not pedantry. That sentinel
+#: means "the caller did not choose this", which is a question about an argument. This one means
+#: "the tree does not have this path", which is a question about a lookup. One name for both would
 #: read as an answer to whichever question the reader had in mind.
 MISSING = object()
 
@@ -553,11 +553,11 @@ MISSING = object()
 def read_key(cfg: Any, key: str) -> Any:
     """The value the tree holds for ``key``, or :data:`MISSING` if the path does not exist.
 
-    **PUBLIC, AND IT HAS TO BE.** `api/routers/config.py` and `src/config/__main__.py` both need this
-    walker AND the sentinel; a private name leaves one of them carrying a walker of its own that
+    **Public, and it has to be.** `api/routers/config.py` and `src/config/__main__.py` both need this
+    walker and the sentinel; a private name leaves one of them carrying a walker of its own that
     returns ``None`` for both "missing" and "the value is None".
 
-    MEASURED on the default tree: 45 of 468 keys hold ``None``. For each of them a walker that
+    Measured on the default tree: 45 of 468 keys hold ``None``. For each of them a walker that
     conflates "missing" with "the value is None" prints ``camera.cameras.active_rig_id``, where
     this one prints ``camera.cameras.active_rig_id = None``. Same key, two answers, from a pair of callers
     that `KeyExplanation` is split out to keep in step (see `explain.py:99-106`). The drift does not

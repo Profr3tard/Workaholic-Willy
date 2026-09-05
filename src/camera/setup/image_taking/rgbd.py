@@ -44,7 +44,7 @@ class OpenCvRGBDStreamer:
     """Generic RGB-D streamer over ``cv2.VideoCapture`` (OpenNI depth channels).
 
     Returns colour and depth frames when the OpenCV backend exposes depth via the
-    ``CAP_OPENNI_*`` retrieve flags. It does NOT talk to any vendor SDK, so on a
+    ``CAP_OPENNI_*`` retrieve flags. It does not talk to any vendor SDK, so on a
     device whose depth is only reachable through its native SDK (e.g. a RealSense
     over librealsense) the depth channel comes back empty, so use
     :class:`RealSenseRGBDStreamer` there. Quality settings from ``quality.py`` are
@@ -90,7 +90,7 @@ class OpenCvRGBDStreamer:
         )
         # Fail closed if the device did not honour the requested colour
         # resolution (mirrors SingleDeviceStreamer._validate_settings). Depth
-        # resolution is NOT verifiable through this single-VideoCapture path, so
+        # resolution is not verifiable through this single-VideoCapture path, so
         # it is intentionally left unchecked here.
         if (settings["width"], settings["height"]) != self.color_res:
             raise ValueError(
@@ -404,7 +404,7 @@ class RealSenseRGBDStreamer:
     def _read_intrinsics(self, rs: Any, profile: Any) -> np.ndarray | None:
         """Read the colour-stream 3x3 K matrix from the active profile, and store its distortion.
 
-        The D435 ships factory-calibrated: the SDK hands over ``intr.coeffs`` (the 5-term
+        The d435 ships factory-calibrated: the SDK hands over ``intr.coeffs`` (the 5-term
         Brown-Conrady distortion) right next to fx/fy/ppx/ppy. It used to be dropped here, so every
         downstream ArUco/PnP solve ran with an implicit zero-distortion assumption. We keep it now (see
         :meth:`get_distortion` and decision D1); the aligned colour stream is typically near-zero, but

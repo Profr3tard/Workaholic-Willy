@@ -15,9 +15,9 @@ device with pinned memory and non-blocking copies.
 
 Both selections are silent to the caller and both change how fast, and
 sometimes whether, a model runs. So both are logged to
-``logs/utility/device.log``: the chosen device at INFO, which is the first thing
-anyone asks when inference is slow, the dtype detail at DEBUG, and the two
-silent downgrades, auto-to-CPU and half-precision-to-fp32, at WARNING, because
+``logs/utility/device.log``: the chosen device at info, which is the first thing
+anyone asks when inference is slow, the dtype detail at debug, and the two
+silent downgrades, auto-to-CPU and half-precision-to-fp32, at warning, because
 neither is anything the caller asked for.
 """
 
@@ -93,7 +93,7 @@ def get_device(prefer: str | None = None) -> torch.device:
         return torch.device("mps")
     # Production is expected to find a GPU. Landing on CPU is not an error and
     # not a preference the operator expressed; it is a silent order-of-magnitude
-    # slowdown, which is what WARNING is for.
+    # slowdown, which is what warning is for.
     _log().warning(
         "device: pref=auto found neither CUDA nor MPS -> cpu; model inference will be slow"
     )

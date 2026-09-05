@@ -15,7 +15,7 @@ class LimitsSafetyConfig(StrictModel):
     ``workspace_margin_mm`` is consumed by :class:`SafetyPreflight.from_safety_config` to shrink the
     ``workspace_limits`` box on every face before the workspace guard runs.
 
-    Deliberately does NOT declare velocity/acceleration ceilings: real per-move vel/acc come from the
+    Deliberately does not declare velocity/acceleration ceilings: real per-move vel/acc come from the
     consumed :class:`MotionLimitsConfig` (``config.motion_limits``). Hardware speed-limiting belongs there
     (a ``min(motion_limits, safety)`` clamp at the UR/KUKA boundary), not a second dead surface here.
     """
@@ -41,7 +41,7 @@ class JointLimitSafetyConfig(StrictModel):
     enforce: bool = Field(default=True)
     margin_deg: float = Field(default=5.0, ge=0.0, le=45.0)
     # Optional per-axis static fallback in degrees. If provided, both
-    # lists MUST be the same length as the arm's DoF and ``min_deg[i]
+    # lists must be the same length as the arm's DoF and ``min_deg[i]
     # < max_deg[i]`` for every axis i.
     min_deg: list[float] | None = Field(default=None)
     max_deg: list[float] | None = Field(default=None)
@@ -146,14 +146,14 @@ class SelfCollisionSafetyConfig(StrictModel):
     enforce: bool = Field(default=True)
     backend: Literal["capsule", "fcl"] = Field(default="fcl")
     min_distance_mm: float = Field(default=10.0, ge=0.0, le=500.0)
-    #: Clearance (mm) handed to the TRAJECTORY PLANNER so it stops proposing configurations this guard
-    #: will reject. cuRobo plans against a SPHERE model and the guard re-checks the EXACT MESHES, so the
+    #: Clearance (mm) handed to the trajectory planner so it stops proposing configurations this guard
+    #: will reject. cuRobo plans against a sphere model and the guard re-checks the exact meshes, so the
     #: two disagree: measured on-box, cuRobo returned UR5e plans at 9.44-9.47 mm against this guard's
     #: 10.000 mm, losing 3 of 10 picks to what read like bad grasping.
     #:
-    #: It is a SEPARATE number from ``min_distance_mm``, not derived from it, because how much margin a
+    #: It is a separate number from ``min_distance_mm``, not derived from it, because how much margin a
     #: planner can absorb depends on how tightly its spheres fit that robot, and that differs per model.
-    #: MEASURED: a UR5e plans fine at 10 mm; a UR3e plans fine to 6 mm and finds NO plan at all at 10 mm
+    #: Measured: a UR5e plans fine at 10 mm; a UR3e plans fine to 6 mm and finds NO plan at all at 10 mm
     #: (its thinner links make the inflated spheres read as permanent self-collision). Deriving this from
     #: ``min_distance_mm`` therefore looked right and took the UR3e cell from 10/10 to 0/10.
     #:
@@ -169,7 +169,7 @@ class SelfCollisionSafetyConfig(StrictModel):
     # into the UR DH so it gets real arm-vs-arm self-collision instead of only base+tool+fixture checks.
     kinematics_model: str | None = Field(default=None)
 
-    # When a NON-default gripper is MOUNTED (its collision geometry differs from the baked Robotiq 2F-85),
+    # When a NON-default gripper is mounted (its collision geometry differs from the baked Robotiq 2F-85),
     # this names the per-gripper fcl/Coal mesh bundle the backend loads (``{variant}_collision_meshes.npz``)
     # instead of ``{kinematics_model}_...``. The arm kinematics stay ``kinematics_model`` (the variant bundle
     # copies the arm-link meshes + swaps only the gripper meshes). ``None`` (default) = the kinematics_model
@@ -182,7 +182,7 @@ class SelfCollisionSafetyConfig(StrictModel):
     # ``[-x, -y, z]`` vs the Lula FK ground truth at every pose). The guard rotates the DH-derived arm-link
     # origins by this yaw so the arm capsules line up with the base/tool/fixture capsules (all already in the
     # system frame). Default 0.0 == no rotation == byte-identical for every existing cell, including the real
-    # ``vendor == "ur"`` path, whose own base-yaw MUST be validated on hardware before relying on
+    # ``vendor == "ur"`` path, whose own base-yaw must be validated on hardware before relying on
     # arm-vs-fixture capsules (the arm self-collision path has never been exercised on real UR). Only the
     # arm-link capsules are affected; arm-vs-arm distance is rotation-invariant, so this knob cannot change it.
     kinematics_base_yaw_deg: float = Field(default=0.0, ge=-360.0, le=360.0)
@@ -196,14 +196,14 @@ class SelfCollisionSafetyConfig(StrictModel):
     base_height_mm: float = Field(default=150.0, gt=0.0, le=2000.0)
 
     # The tool collision model. ``capsule`` (default) is the legacy single capsule along the tool
-    # APPROACH axis (R[:, 2]) with radius ``tool_radius_mm``, a rotation-invariant bounding cylinder. For
+    # Approach axis (R[:, 2]) with radius ``tool_radius_mm``, a rotation-invariant bounding cylinder. For
     # a parallel-jaw gripper that is over-conservative against a bin wall: a 2F-85 reaching into a KLT is
     # ~27 mm wide perpendicular to its closing axis (measured on-box from the Robotiq_2f_85 USD) but the
-    # r=70 cylinder claims 140 mm in EVERY direction, so an off-center target is falsely wall-rejected.
-    # ``finger`` instead models the descending fingers as a thin capsule ALONG the grasp's CLOSING axis
+    # r=70 cylinder claims 140 mm in every direction, so an off-center target is falsely wall-rejected.
+    # ``finger`` instead models the descending fingers as a thin capsule along the grasp's closing axis
     # (R[:, 0]; the [closing, binormal, approach] convention of execution_policy._quaternion_from_axes),
     # length ``tool_finger_span_mm`` (fingertip-to-fingertip at full open), radius ``tool_finger_radius_mm``
-    # (the measured perpendicular half-width). This is rotation-AWARE: it clears the narrow wall the thin
+    # (the measured perpendicular half-width). This is rotation-aware: it clears the narrow wall the thin
     # side faces and still rejects when the open-span faces it: the honest, yaw-dependent footprint.
     # Default ``capsule`` == byte-identical to every existing cell.
     tool_model: Literal["capsule", "finger"] = Field(default="capsule")
@@ -266,13 +266,13 @@ class DwellSafetyConfig(StrictModel):
     """Post-Stop dwell + steady-state gating.
 
     Distinct from the other safety guards because it is a *temporal* check (does the controller report
-    steady state?) rather than a per-target spatial check, so it lives OUTSIDE the per-move
+    steady state?) rather than a per-target spatial check, so it lives outside the per-move
     :class:`SafetyPreflight` pipeline.
 
-    ``require_steady_before_motion`` + ``steady_timeout_s`` ARE consumed by
+    ``require_steady_before_motion`` + ``steady_timeout_s`` are consumed by
     :class:`GraspExecutionPolicy`: before every commanded approach/grasp/retreat move the policy blocks
-    on ``arm.wait_until_steady(steady_timeout_s)`` and FAILS CLOSED on timeout. ``dwell_after_stop_s`` is
-    currently NOT enforced: there is no exercised Stop/E-stop path in the runtime (deferred).
+    on ``arm.wait_until_steady(steady_timeout_s)`` and fails closed on timeout. ``dwell_after_stop_s`` is
+    currently not enforced: there is no exercised Stop/E-stop path in the runtime (deferred).
     """
 
     require_steady_before_motion: bool = Field(default=True)
@@ -308,9 +308,9 @@ class SupportPlaneConfig(StrictModel):
 
 
 class TrajectoryCheckConfig(StrictModel):
-    """Whether a PLANNED PATH is checked configuration by configuration before any of it is commanded.
+    """Whether a planned PATH is checked configuration by configuration before any of it is commanded.
 
-    The one-shot guards judge where a move ENDS. A trajectory planner hands over the whole path, and a
+    The one-shot guards judge where a move ends. A trajectory planner hands over the whole path, and a
     plan that grazes a fixture in the middle and lands clear is exactly what an endpoint check cannot
     see. Nothing checks the middle today: the sim applies each waypoint straight to the articulation
     and the real UR moveJ's them in turn, so the planner is asked for a collision-free path and then
@@ -326,17 +326,17 @@ class TrajectoryCheckConfig(StrictModel):
 
 
 class AttachedPayloadConfig(StrictModel):
-    """Whether the planner is told that the gripper is CARRYING something.
+    """Whether the planner is told that the gripper is carrying something.
 
     The planner's collision model ends at the gripper, so every transit, lift, place and retreat after
     a successful close is planned as if the hand were empty. On a cell carrying a part out of a bin
     that part is the geometry most likely to meet a wall.
 
-    MEASURED against the real planner (ur5e, a wall at x = 250 mm): carrying a 300 x 300 x 50 mm plate
+    Measured against the real planner (ur5e, a wall at x = 250 mm): carrying a 300 x 300 x 50 mm plate
     turns a 61-waypoint plan into no plan, while a 20 mm cube still plans. It blocks on geometry, not
     on principle.
 
-    HONEST LIMIT: a box is not the part. The lateral extents come from the jaw opening at the grasp,
+    Honest limit: a box is not the part. The lateral extents come from the jaw opening at the grasp,
     which is a real measurement of the part at the grasp line and says nothing about the rest of it;
     ``length_mm`` is a declared worst case, not something anything measured.
     """
@@ -348,7 +348,7 @@ class AttachedPayloadConfig(StrictModel):
 
 
 class PlanningWorldConfig(StrictModel):
-    """What the TRAJECTORY PLANNER is told about the cell, as axis-aligned boxes in the base frame.
+    """What the trajectory planner is told about the cell, as axis-aligned boxes in the base frame.
 
     Separate from the guard's own fixture list only in what consumes it: the guard checks a single
     commanded configuration, the planner shapes the whole path. ``include_fixtures`` keeps them one
@@ -391,9 +391,9 @@ class RobotSafetyConfig(StrictModel):
     * :attr:`payload`: mass / CoG / inertia envelope.
     * :attr:`self_collision`: link-link / link-fixture collision.
     * :attr:`dwell`: post-Stop dwell + steady-state gating.
-    * :attr:`planning_world`: the boxes the TRAJECTORY PLANNER routes around.
+    * :attr:`planning_world`: the boxes the trajectory planner routes around.
     * :attr:`trajectory_check`: gate every configuration of a planned path, not only its end.
-    NOT here: the EMERGENCY STOP. It is a hardware and controller function, outside this software's
+    Not here: the emergency stop. It is a hardware and controller function, outside this software's
     control and deliberately so: nothing in this package can enable, disable, route or observe it.
     """
 

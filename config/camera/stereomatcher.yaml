@@ -1,11 +1,11 @@
 stereomatcher:
   # --- Core SGBM parameters ---
   minDisparity: 0
-  # numDisparities MUST be divisible by 16. Larger = supports closer
+  # numDisparities must be divisible by 16. Larger = supports closer
   # objects at the cost of memory + compute. 320 covers typical desk
   # distance scenes.
   numDisparities: 320
-  # blockSize MUST be odd. 5 to 9 is the usable range for SGBM. Smaller =
+  # blockSize must be odd. 5 to 9 is the usable range for SGBM. Smaller =
   # better edge preservation; larger = smoother in low-texture regions.
   blockSize: 7
   # P1/P2 control the smoothness penalty. null -> auto-computed as

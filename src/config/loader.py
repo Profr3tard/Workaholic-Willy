@@ -39,9 +39,9 @@ raises :class:`ConfigError`.
 Errors
 ------
 Every load-time failure is raised as :class:`ConfigError`. A schema failure names, per offending key,
-the FILE and LINE it was written on and which profile layer that file belongs to, plus a did-you-mean
+the file and line it was written on and which profile layer that file belongs to, plus a did-you-mean
 for a near-miss key name. That matters because a profile chain merges several files into one section,
-so naming only the data DIRECTORY would leave the reader guessing which of them carried the typo.
+so naming only the data directory would leave the reader guessing which of them carried the typo.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 from pydantic import ValidationError
 
-# THE ONE IMPORT THIS PACKAGE TAKES OUT OF `src`, AND IT IS FREE. `src` is a
+# The one import this package takes out of `src`, and it is free. `src` is a
 # namespace package with no `__init__.py`, and `contracts` is stdlib-only by rule, so this pulls
 # three modules in about 1 ms and no numpy, no torch, no `utility/__init__`. Anything heavier
 # reaching in here would put weight on the boot path of every process that reads config, which is
@@ -85,14 +85,14 @@ class ConfigError(RuntimeError):
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[2] / "config"
 _PROFILE_ENV_VAR = "WILLY_PROFILE"
 
-#: ``WILLY_PROFILE`` accepts a COMMA-SEPARATED CHAIN of profile layers, applied left-to-right
+#: ``WILLY_PROFILE`` accepts a comma-separated chain of profile layers, applied left-to-right
 #: (``"sim,ur3e"`` merges every ``*.sim.yaml`` first, then every ``*.ur3e.yaml`` on top). A single
 #: name is just a one-element chain, so the historical behaviour is unchanged.
 #:
-#: Composition exists because the layers are INDEPENDENT dimensions. The sim cell's overlays span
+#: Composition exists because the layers are independent dimensions. The sim cell's overlays span
 #: four files (``robot``, ``camera/hand_eye``, ``models/object``, ``models/segmenting``) and carry
 #: measured values, e.g. the detector ``torch_dtype`` reset that small-object recall depends on.
-#: Expressing "the sim cell, but driving a UR3e" as a *separate* profile would have to FORK all four,
+#: Expressing "the sim cell, but driving a UR3e" as a *separate* profile would have to fork all four,
 #: duplicating those measured values per robot; they would then drift. Chaining keeps one ``sim``
 #: layer and adds a small per-robot layer that only states what the robot actually changes.
 _PROFILE_SEPARATOR = ","
@@ -104,7 +104,7 @@ _PROFILE_SEPARATOR = ","
 #: Default-off (env unset) => byte-identical legacy path.
 _ADAPTATION_OVERLAY_ENV_VAR = "WILLY_ADAPTATION_OVERLAY"
 
-#: Reset sentinel for PROFILE overlays. A ``None`` overlay leaf keeps the base value (so a partial
+#: Reset sentinel for profile overlays. A ``None`` overlay leaf keeps the base value (so a partial
 #: overlay never accidentally wipes a field). When a profile *does* need to unset a base value, it
 #: writes this string; the loader resolves it to ``None`` after the merge. This is the only way an
 #: overlay can force a field back to ``None`` (e.g. ``models/object.sim.yaml`` drops the production
@@ -149,26 +149,26 @@ def load_config(
             an environment variable is unresolved, or schema validation
             rejects the merged result.
 
-    **WHY ``profile`` IS A REAL ARGUMENT NOW.** Selecting a chain used to be possible only by
+    **Why ``profile`` is a real argument now.** Selecting a chain used to be possible only by
     mutating ``os.environ[WILLY_PROFILE]``, so a caller who wanted one tree had to save the old
     value, set the new one, load, and restore it in a ``finally``. That dance is written out by hand
     at TEN production sites, no two of them quite alike, and getting it wrong leaks process-global
     state into whatever runs next: one leak already made an unrelated safety test fail three files
     downstream. A parameter removes the reason for the dance.
 
-    **``profile=None`` MEANS "THE BASE TREE, NO OVERLAYS", AND THAT IS WHY THE DEFAULT IS
+    **``profile=None`` means "the BASE tree, no overlays", and that is why the default is
     ``UNSET``.** ``None`` is a legitimate value here, so it cannot also mean "I did not say". A
     caller who passes ``None`` gets the unlayered tree even when ``WILLY_PROFILE`` is set in the
     environment, which is precisely what a test or a tool that must not inherit the operator's shell
     needs. Omitting the argument reads the environment exactly as before, so every existing call is
     byte-identical.
 
-    **THE CHAIN IS VALIDATED THE SAME WAY WHICHEVER DOOR IT CAME THROUGH.** Both routes go through
+    **The chain is validated the same way whichever door it came through.** Both routes go through
     :func:`_validated_chain`, so a typo'd layer is refused here rather than merging as a silent
     no-op and bringing the cell up with another robot's geometry.
     """
     root = Path(data_dir).resolve() if data_dir else _DEFAULT_DATA_DIR
-    # `chosen()` RATHER THAN `profile is UNSET`, and the positive arm is the one that uses the
+    # `chosen()` rather than `profile is UNSET`, and the positive arm is the one that uses the
     # value. `is` narrows nothing for a type checker (`_Unset` is a plain class, not a singleton it
     # can reason about), so the first version of this line failed mypy with
     # `"str | _Unset | None"; expected "str | None"`. `chosen` is a `TypeGuard`, which narrows only
@@ -187,7 +187,7 @@ def load_robot_config(
 ) -> "RobotConfig":
     """The ``robot`` block of the tree, or a refusal saying there is none.
 
-    **THIS EXISTS BECAUSE FOUR SITES WROTE IT OUT BY HAND**, three of them character for
+    **This exists because four sites wrote it out by hand**, three of them character for
     character: `execution/real_cell/__main__.py`, `execution/real_cell/calibrate.py` and
     `drivers/ur/__main__.py` each carried the same save-set-load-restore of
     ``os.environ["WILLY_PROFILE"]`` followed by the same ``getattr(cfg, "robot", None)`` check. Four
@@ -195,7 +195,7 @@ def load_robot_config(
     process-global state: one leak already made an unrelated safety test fail three files
     downstream.
 
-    **IT RAISES ``ConfigError``, NOT ``SystemExit``.** The copies raised ``SystemExit`` from what
+    **It raises ``ConfigError``, not ``SystemExit``.** The copies raised ``SystemExit`` from what
     is library code, which reads as an exit request rather than as a fault and is invisible to a
     caller that catches exceptions properly. Two of the CLIs then caught ``SystemExit`` and nothing
     else, so a genuinely broken YAML tree (which raises ``ConfigError`` out of :func:`load_config`)
@@ -253,7 +253,7 @@ def set_active_profile(profile: str | None) -> None:
 
 
 def available_profiles(data_dir: str | Path | None = None) -> list[str]:
-    """Return sorted profile LAYER names discovered from ``*.{layer}.yaml`` files.
+    """Return sorted profile layer names discovered from ``*.{layer}.yaml`` files.
 
     Layers are composable: any subset can be combined into a chain (``"sim,ur3e"``), so this is the
     menu of building blocks, not the list of valid whole configurations.
@@ -306,7 +306,7 @@ def _load_cached(root_str: str, profile: str) -> AppConfig:
 def _describe_validation_error(exc: ValidationError, root: Path, profile: str) -> str:
     """Render a validation failure so the reader can go straight to the line that caused it.
 
-    A profile chain merges four files into one section, so naming only the data DIRECTORY leaves
+    A profile chain merges four files into one section, so naming only the data directory leaves
     the reader guessing which of them carried the typo. Nothing is relaxed to say more: same
     exception, same fail-closed behaviour, strictly more information.
 
@@ -332,7 +332,7 @@ def _describe_validation_error(exc: ValidationError, root: Path, profile: str) -
         if origin is not None:
             lines.append(f"      at {origin.location(root)}")
         else:
-            # No origin means the key is NOT in any YAML: it is a schema default that failed a
+            # No origin means the key is not in any YAML: it is a schema default that failed a
             # cross-field rule, or a required field nobody wrote. Saying so is the useful half.
             lines.append("      (not written in any YAML: a default or a cross-field rule)")
         lines.append(f"      {err['msg']}")
@@ -400,9 +400,9 @@ def _load_models_section(root: Path, profile: str) -> dict[str, Any]:
             seen_in[key] = path
 
     # Allow profile-only model files (e.g. models/edge.prod.yaml) that have no non-profile base
-    # counterpart. Gathered per profile LAYER in chain order and merged BY STEM first, so a later
+    # counterpart. Gathered per profile layer in chain order and merged by stem first, so a later
     # layer refines the same profile-only file (models/foo.sim.yaml -> models/foo.ur3e.yaml) instead
-    # of colliding with it; a genuine duplicate model key across DIFFERENT files still raises.
+    # of colliding with it; a genuine duplicate model key across different files still raises.
     base_stems = {p.stem for p in base_paths}
     extra: dict[str, tuple[Path, dict[str, Any]]] = {}
     for layer in profile_layers(profile):
@@ -455,8 +455,8 @@ def _load_yaml_with_profile(path: Path, profile: str, *, required: bool) -> Any 
     - a multi-layer profile (``"sim,ur3e"``) merges its overlays left-to-right, then onto the base
     - dict values merge recursively
     - scalars/lists replace base values
-    - a ``None`` (``null``) overlay leaf KEEPS the base value (a partial overlay can omit-by-null)
-    - the string :data:`_OVERLAY_RESET` (``"__null__"``) RESETS a field to ``None``, the one way a
+    - a ``None`` (``null``) overlay leaf keeps the base value (a partial overlay can omit-by-null)
+    - the string :data:`_OVERLAY_RESET` (``"__null__"``) resets a field to ``None``, the one way a
       profile overlay can *unset* a base value (e.g. ``models/object.sim.yaml`` drops the production
       ``optim.torch_dtype: auto`` back to the unset/HF default that the sim's validated recall path needs).
     """
@@ -493,7 +493,7 @@ def _load_profile_overlay(path: Path, profile: str) -> Any | None:
 def _resolve_overlay_resets(value: Any) -> Any:
     """Replace every :data:`_OVERLAY_RESET` sentinel with ``None`` (post-merge, profile overlays only).
 
-    Runs on the MERGED result so a sentinel in the overlay, which merges in as a normal
+    Runs on the merged result so a sentinel in the overlay, which merges in as a normal
     scalar-replace, becomes ``None`` in the final config. Production (no profile) never carries the
     sentinel, so this is a no-op there.
     """
@@ -505,14 +505,14 @@ def _resolve_overlay_resets(value: Any) -> Any:
 
 
 def _validated_chain(root: Path, raw: str | None, *, source: str) -> str:
-    """Validate + normalise a profile chain. EVERY layer of it must contribute a file.
+    """Validate + normalise a profile chain. Every layer of it must contribute a file.
 
     Fail-closed per layer: a typo'd layer (``sim,ur3``) would otherwise merge silently as a no-op and
-    the cell would come up with the OTHER robot's geometry, which is the failure this whole check
+    the cell would come up with the other robot's geometry, which is the failure this whole check
     exists to prevent.
 
-    **ONE VALIDATOR FOR BOTH DOORS.** A chain can arrive from the environment or from a
-    ``load_config(profile=...)`` argument, and the second door was added later. It routes THROUGH
+    **One validator for both doors.** A chain can arrive from the environment or from a
+    ``load_config(profile=...)`` argument, and the second door was added later. It routes through
     this function rather than around it, because a check that guards only the older entrance is a
     check a caller can walk past. ``source`` exists only so the refusal names the thing the operator
     actually typed.

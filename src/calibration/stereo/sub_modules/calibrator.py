@@ -61,7 +61,7 @@ class StereoCalibrator:
             resolve_aruco_dictionary(aruco_dict_name),
         )
         self._detector = cv.aruco.CharucoDetector(self._board)
-        # Board geometry decides the SCALE of every result below, so record what we were told.
+        # Board geometry decides the scale of every result below, so record what we were told.
         logger.debug(
             "ChArUco board %dx%d squares, square=%.2f mm, marker=%.2f mm, dict=%s, alpha=%.2f.",
             int(squares_x),
@@ -180,7 +180,7 @@ class StereoCalibrator:
         cornersR: np.ndarray,
         idsR: np.ndarray,
     ) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
-        """Keep only ChArUco corners seen in BOTH images; return (object, left, right) points."""
+        """Keep only ChArUco corners seen in both images; return (object, left, right) points."""
         board_corners = np.asarray(self._board.getChessboardCorners(), dtype=np.float32)
         ids_left = [int(i) for i in idsL.flatten()]
         ids_right = [int(i) for i in idsR.flatten()]

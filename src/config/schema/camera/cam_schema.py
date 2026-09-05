@@ -222,7 +222,7 @@ class CameraSystemConfig(StrictModel):
             if not active.enabled:
                 raise ValueError(f"active_rig_id {self.active_rig_id!r} is disabled")
 
-        # More than one ENABLED RGB-D rig means two physical cameras on one bus, and then the ONLY
+        # More than one enabled RGB-d rig means two physical cameras on one bus, and then the only
         # stable way to say which is which is the serial number. `RealSenseRGBDStreamer` binds a device
         # with `rs_config.enable_device(self.serial)` and, with no serial, takes whatever the SDK offers
         # first, an order that is not stable across boots or replugs.
@@ -286,17 +286,17 @@ class StereoMatcherConfig(StrictModel):
     p1: int | None = Field(default=None, ge=0)
     p2: int | None = Field(default=None, ge=0)
     #: Percent by which the best match must beat the runner-up before it is trusted. Higher = fewer
-    #: wrong depths on textureless surfaces, at the price of HOLES where nothing wins clearly. This is
+    #: wrong depths on textureless surfaces, at the price of holes where nothing wins clearly. This is
     #: the main "confident but sparse vs dense but wrong" dial.
     uniqueness_ratio: int = Field(alias="uniquenessRatio", ge=0)
-    #: Largest blob of similar disparity still treated as NOISE and cleared. Isolated specks are almost
+    #: Largest blob of similar disparity still treated as noise and cleared. Isolated specks are almost
     #: always mismatches, and a speck at the wrong depth is worse than a hole because a grasp can be
     #: planned onto it. ``0`` disables the filter.
     speckle_window_size: int = Field(alias="speckleWindowSize", ge=0)
     #: How much disparity may vary inside one blob before it counts as a separate surface rather than
     #: one speckle. Read together with ``speckle_window_size``; alone it does nothing.
     speckle_range: int = Field(alias="speckleRange", ge=0)
-    #: Tolerance (px) of the LEFT-RIGHT consistency check: a pixel is kept only if matching left-to-right
+    #: Tolerance (px) of the left-right consistency check: a pixel is kept only if matching left-to-right
     #: and right-to-left agree within this. It is the cheapest guard against occlusion-edge depths, which
     #: are exactly the depths a grasp planner would otherwise aim at. ``-1`` disables the check.
     disp12_max_diff: int = Field(alias="disp12MaxDiff")

@@ -16,7 +16,7 @@ from .._base import StrictModel
 #
 # Operator authority hierarchy (hard lock): robot.safety > runtime/hardware
 # constraints > deterministic geometry > deterministic recovery > ML/RL. Nothing
-# here may alter safety. Action masks are NOT YAML knobs: they are immutable
+# here may alter safety. Action masks are not YAML knobs: they are immutable
 # code-side mappings per policy class, so the runtime safety boundary cannot be
 # widened via config.
 

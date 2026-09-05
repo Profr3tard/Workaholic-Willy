@@ -59,21 +59,21 @@ class RobotCalibrationConfig(StrictModel):
     # Pose-generator retry budget per pose before giving up.
     max_attempts_per_pose: int = Field(default=200, ge=1)
 
-    #: ETH pose-generator z band PER MARKER SOURCE (``"ground_truth"`` / ``"aruco"``), as ``(lo, hi)``
+    #: ETH pose-generator z band per MARKER source (``"ground_truth"`` / ``"aruco"``), as ``(lo, hi)``
     #: fractions of ``workspace_limits.z_max``. An absent key keeps that source's shipped default
     #: (ground-truth: the full box; ArUco: 0.55-0.75, the band that holds the tool marker inside the
     #: narrow overhead FOV).
     #:
-    #: It is keyed by source because MEASUREMENT says the two sources want opposite things, and a single
+    #: It is keyed by source because measurement says the two sources want opposite things, and a single
     #: value would fix one while breaking the other. On-box 2026-07-24, UR3e, each figure reproduced:
     #:
     #:   ground_truth  full box      4/22 samples, 16x status=timeout, too few to solve
-    #:   ground_truth  0.5-0.9       9/22 samples, rmse 0.0000 mm, quality excellent, GATE PASS
+    #:   ground_truth  0.5-0.9       9/22 samples, rmse 0.0000 mm, quality excellent, gate pass
     #:   aruco         0.55-0.75    11/22 samples, rmse 6.44 mm, quality poor
-    #:   aruco         0.5-0.9       1/22 samples, 21x status=timeout   <- the SAME band that fixes GT
+    #:   aruco         0.5-0.9       1/22 samples, 21x status=timeout   <- the same band that fixes GT
     #:
     #: (A UR5e needs neither: it collects 17/22 on the full box and solves exactly. So the default is
-    #: None and every existing cell is untouched.) The pose box is the sampler's RANGE, not a
+    #: None and every existing cell is untouched.) The pose box is the sampler's range, not a
     #: filter: moving one bound re-draws every pose, so a narrower band is not a safer band.
     #: ``run_eth_calibrate --z-frac LO,HI`` overrides it for a one-off experiment.
     pose_box_z_frac: dict[str, tuple[float, float]] | None = None

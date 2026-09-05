@@ -1,36 +1,36 @@
 # ============================================================================
-# TILTED DUAL-D435 CAMERA RIG: the camera half of the September cell.
+# Tilted dual-d435 CAMERA rig: the camera half of the September cell.
 #
 #   WILLY_PROFILE=ur3e,tiltcam        real UR3e cell with the tilted pair
 #   WILLY_PROFILE=sim,ur3e,tiltcam    the same optics in Isaac
 #
-# PAIRED WITH `robot.tiltcam.yaml`, deliberately under the SAME profile name.
+# Paired with `robot.tiltcam.yaml`, deliberately under the same profile name.
 # That file places two eye-to-hand cameras at 70 deg elevation, 900 mm from the
-# aim point, and authors their lens to a D435's 69.4 deg RGB FOV. THIS file is
+# aim point, and authors their lens to a d435's 69.4 deg RGB FOV. This file is
 # the other half: the two physical cameras those positions describe.
 #
-# Splitting them across two profiles would let a cell run the tilted GEOMETRY
+# Splitting them across two profiles would let a cell run the tilted geometry
 # against a single-camera config, or vice versa, and neither side would notice.
 #
-# WHY THIS FILE HAD TO EXIST. The base `cam.yaml` ships exactly ONE RGB-D rig,
+# Why this file had to exist. The base `cam.yaml` ships exactly one RGB-d rig,
 # disabled, with `serial_number: null`. The September cell is two D435s, so the
 # rig it will actually run could not be expressed at all. `rigs` is a list and
-# the loader REPLACES a list wholesale on merge, so this overlay states the
+# the loader replaces a list wholesale on merge, so this overlay states the
 # cell's complete camera set rather than patching the base one.
 #
-# THE SERIALS ARE THE POINT. Two identical D435s on one bus can only be told
+# The serials are the point. Two identical D435s on one bus can only be told
 # apart by serial: `RealSenseRGBDStreamer` binds a device with
 # `rs_config.enable_device(serial)` and, with no serial, takes whatever the SDK
 # offers first, an enumeration order that is not stable across boots or
-# replugs. Two cameras that swap identity do NOT fail. They produce a complete,
+# replugs. Two cameras that swap identity do not fail. They produce a complete,
 # plausible scene with left and right exchanged, every fused position mirrored
 # about the rig axis, and the pick goes confidently to the wrong place.
 #
-# So both rigs ship DISABLED with null serials: the tree loads, and the moment
-# you enable both without filling the serials the config REFUSES, with a message
+# So both rigs ship disabled with null serials: the tree loads, and the moment
+# you enable both without filling the serials the config refuses, with a message
 # that says how to read them. That refusal is the feature.
 #
-#   BENCH STEP: read the serials, one line, with either camera unplugged first
+#   Bench step: read the serials, one line, with either camera unplugged first
 #   if you want to be certain which is which:
 #
 #     rs-enumerate-devices -s
@@ -40,11 +40,11 @@
 #
 #   Then set `serial_number` per rig and flip `enabled: true` on both.
 #
-# NAMING: the rig ids match the robot layer's camera keys (`oblique_L` /
+# Naming: the rig ids match the robot layer's camera keys (`oblique_L` /
 # `oblique_R`) so the two halves read as one cell. Which physical camera is
 # "left" is decided by the serial you put here, not by cable order.
 #
-# STATUS: (2)-analytical. The geometry mirrors robot.tiltcam.yaml; no D435 pair
+# Status: (2)-analytical. The geometry mirrors robot.tiltcam.yaml; no d435 pair
 # has ever been enumerated, calibrated or streamed by this repo.
 # ============================================================================
 cameras:
@@ -73,8 +73,8 @@ cameras:
           decimation: false
           spatial: true
           temporal: true
-          # A tilted view sees object SIDES at a steep angle, which is where a D435 drops depth. Hole
-          # filling INVENTS surface, and the grasp-depth top-reference would then sample invented
+          # A tilted view sees object sides at a steep angle, which is where a d435 drops depth. Hole
+          # filling invents surface, and the grasp-depth top-reference would then sample invented
           # geometry, so it stays off: an honest hole is a measurable signal (the perception exerciser
           # prints the hole fraction inside each mask); a filled hole is a confident wrong number.
           hole_filling: false

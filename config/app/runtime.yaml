@@ -1,7 +1,7 @@
 # Workaholic-Willy: runtime tuning for app-level services.
 #
 # These values are operator-tunable. They control memory footprint,
-# UX timing, and image-stream quality. They are NOT safety-critical:
+# UX timing, and image-stream quality. They are not safety-critical:
 # editing them cannot move the robot. Validation is performed by
 # `src/config/schema/app.py` on every load.
 

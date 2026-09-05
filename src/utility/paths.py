@@ -43,7 +43,7 @@ def _log() -> Logger:
     Called only where a line is actually going to be emitted. ``create_logger``
     opens the rotating file eagerly, so touching this accessor on a hot happy
     path, and ``project_root`` runs on every lookup here, would leave a
-    permanently empty ``paths.log`` behind even at DEBUG.
+    permanently empty ``paths.log`` behind even at debug.
     """
     return utility_logger("UtilityPaths", PATHS_LOG_FILE)
 
@@ -149,7 +149,7 @@ def rotate_files(
             continue
 
     # One line per call rather than per file. This is the only helper in the
-    # package that destroys data, so it says so at INFO. It also runs on every
+    # package that destroys data, so it says so at info. It also runs on every
     # debug_dir() call, and the answerable question afterwards is how many went
     # from which bucket, never which artefact happened to be oldest.
     if removed:

@@ -118,7 +118,7 @@ class EyeHandDataset:
         tmp = target.with_suffix(target.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(target)
-        # Path AND size: a dataset that silently captured 0 samples is the failure mode
+        # Path and size: a dataset that silently captured 0 samples is the failure mode
         # this line is here to make obvious afterwards.
         logger.info(
             "Dataset written: %s (%d samples, %d bytes).",

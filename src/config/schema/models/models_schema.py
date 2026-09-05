@@ -57,7 +57,7 @@ class ObjectDetectorConfig(StrictModel):
 
 
 class SegmenterConfig(StrictModel):
-    """Image segmentation (e.g. SAM2) configuration."""
+    """Image segmentation (e.g. Sam2) configuration."""
 
     model_path: str
     model_id: str | None = None
@@ -86,7 +86,7 @@ class SpeechToTextConfig(StrictModel):
     model_id: str
     model_path: str
     samplerate: int
-    # Read wholesale by `WhisperSpeechToText.__init__`, which takes the BLOCK, not a path:
+    # Read wholesale by `WhisperSpeechToText.__init__`, which takes the block, not a path:
     # the reason the dead-key trace first mis-read these four as unread.
     blocksize: int
     channels: int
@@ -109,7 +109,7 @@ class HandDetectConfig(StrictModel):
     Every field below is passed to MediaPipe by
     :class:`~src.models.handdetection.palm_detector.PalmDetector`; none is stored and ignored.
 
-    The ``.task`` bundle is NOT in this repository. It is an operator download, and a missing file
+    The ``.task`` bundle is not in this repository. It is an operator download, and a missing file
     raises with the URL rather than failing inside MediaPipe's graph.
     """
 
@@ -121,14 +121,14 @@ class HandDetectConfig(StrictModel):
     #: Upper bound on simultaneously tracked hands -> ``num_hands``. Note that the 3-D
     #: :class:`~src.models.handdetection.hand_finder.HandFinder` refuses a frame with more
     #: than one hand regardless: two hands in a workspace is a reason to stop, not to choose one.
-    #: Keeping this at 2 is what lets it SEE the second hand in order to refuse.
+    #: Keeping this at 2 is what lets it see the second hand in order to refuse.
     max_hands: int = Field(default=2, ge=1, le=4)
 
     #: Minimum hand-detection confidence -> ``min_hand_detection_confidence``.
     threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
     #: Minimum tracking confidence between frames -> ``min_tracking_confidence``. Only meaningful
-    #: because the detector runs in VIDEO mode; in IMAGE mode there is no previous frame and this
+    #: because the detector runs in video mode; in image mode there is no previous frame and this
     #: would be inert.
     tracking_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
@@ -150,7 +150,7 @@ class HandDetectConfig(StrictModel):
 class GestureDetectConfig(StrictModel):
     """MediaPipe canned gesture recognition, narrowed to thumbs-up / thumbs-down.
 
-    The canned bundle EMBEDS a hand landmarker, so this model returns landmarks as well as
+    The canned bundle embeds a hand landmarker, so this model returns landmarks as well as
     gestures; a cell that wants both should configure this one alone rather than running two
     models over the same frame.
 
@@ -176,7 +176,7 @@ class GestureDetectConfig(StrictModel):
     presence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
     #: The score a thumbs-up must reach to be reported as one. Passed to MediaPipe as the canned
-    #: classifier's ``score_threshold`` AND re-checked on our side, so a below-threshold thumbs-up
+    #: classifier's ``score_threshold`` and re-checked on our side, so a below-threshold thumbs-up
     #: becomes ``NONE`` rather than a low-confidence confirmation. Raise it where a false
     #: confirmation is expensive.
     min_gesture_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -190,13 +190,13 @@ class VlmConfig(StrictModel):
     """The vision-language model that grounds a complex prompt.
 
     **VRAM is the constraint that decides this block**, and the numbers belong in the README next to
-    the choice, not in someone's head. The model runs alongside SAM2 and (in simulation) Isaac's own
+    the choice, not in someone's head. The model runs alongside sam2 and (in simulation) Isaac's own
     renderer on the same card.
     """
 
     #: A released Qwen3-VL-Instruct checkpoint. The paper's Qwen3-VL-Seg (arXiv 2605.07141) publishes
     #: neither weights nor code, so this stack grounds with the released instruct model and cuts masks
-    #: with SAM2 from the same bbox_2d JSON the paper's own decoder consumes. A native-mask
+    #: with sam2 from the same bbox_2d JSON the paper's own decoder consumes. A native-mask
     #: checkpoint, if one is ever released, becomes a different backend behind the same seam.
     model_id: str = "Qwen/Qwen3-VL-4B-Instruct-FP8"
     model_path: str | None = None
@@ -221,12 +221,12 @@ class PromptRouterConfig(StrictModel):
 
     Rule-based and deterministic: a prompt's complexity is read off its structure (attribute count,
     relative clauses, negation, quantifiers) and its language. A cheap-first cascade is deliberately
-    NOT the design: it only works when the cheap stage fails loudly, and this one does not.
+    Not the design: it only works when the cheap stage fails loudly, and this one does not.
     """
 
     enabled: bool = True
     #: A non-English prompt routes to the VLM regardless of complexity. GroundingDINO is effectively
-    #: English-only, and Whisper's German->English translation covers the SPOKEN path only: a typed
+    #: English-only, and Whisper's German->English translation covers the spoken path only: a typed
     #: German prompt reaches the detector untranslated today.
     route_non_english_to_vlm: bool = True
 
@@ -234,9 +234,9 @@ class PromptRouterConfig(StrictModel):
 class ZeroShotPipelineConfig(StrictModel):
     """Open-vocabulary perception: any prompt, no fixed class list."""
 
-    #: ``grounded_sam`` = GroundingDINO + a segmenter. ``vlm`` = the VLM grounds, SAM2 cuts.
+    #: ``grounded_sam`` = GroundingDINO + a segmenter. ``vlm`` = the VLM grounds, sam2 cuts.
     backend: Literal["grounded_sam", "vlm"] = "grounded_sam"
-    #: Only consulted for ``grounded_sam``; the VLM route always cuts with SAM2, because there is no
+    #: Only consulted for ``grounded_sam``; the VLM route always cuts with sam2, because there is no
     #: second mask source to choose between yet. Offering a knob with one legal value would be
     #: pretending otherwise.
     segmenter: Literal["sam2", "oneformer"] = "sam2"
@@ -274,12 +274,12 @@ class PipelineConfig(StrictModel):
         is a stack that runs confidently and grounds the wrong thing, and a warning in a log has never
         stopped a grasp.
         """
-        # NOTE (2026-08-11): the VLM route used to pin segmenter='sam2' here. That was POLICY, not a
+        # NOTE (2026-08-11): the VLM route used to pin segmenter='sam2' here. That was policy, not a
         # technical limit, and it was wrong: OneFormer implements the same box-prompted contract
-        # (`segment_detection` -> `_pick_segment_in_box`), so it works with ANY box source, the
+        # (`segment_detection` -> `_pick_segment_in_box`), so it works with any box source, the
         # phrase grounder and the VLM alike. Both routes now honour the choice.
         #
-        # Which is BETTER is unmeasured. SAM2 is prompted per box and cuts one object; OneFormer
+        # Which is better is unmeasured. Sam2 is prompted per box and cuts one object; OneFormer
         # segments the whole image with its own trained vocabulary and the box selects among the
         # segments. Those fail differently, and this repo has no comparison yet, so this is a knob,
         # not a recommendation.
@@ -287,7 +287,7 @@ class PipelineConfig(StrictModel):
             # A closed-set stack has no free-text route to send anything to; routing a prompt there
             # would produce a decision nothing can act on.
             #
-            # Only an EXPLICIT `router.enabled: true` is an error. Left unset it is just the field's
+            # Only an explicit `router.enabled: true` is an error. Left unset it is just the field's
             # default, and failing someone for a default they never wrote, when the correct value is
             # unambiguous, is a validator being pedantic rather than protective.
             if "router" in self.model_fields_set and "enabled" in self.router.model_fields_set:
@@ -298,13 +298,13 @@ class PipelineConfig(StrictModel):
                 )
             object.__setattr__(self, "router", self.router.model_copy(update={"enabled": False}))
         if self.kind == "zero_shot" and self.router.enabled and self.zero_shot.backend != "vlm":
-            # Routing exists to send HARD prompts somewhere better. With only the phrase grounder
+            # Routing exists to send hard prompts somewhere better. With only the phrase grounder
             # configured there is nowhere better to send them, so every VLM decision the router made
             # would either be ignored or would fail at pick time, after the operator pressed go.
             #
-            # Same rule as the closed_set case above: only an EXPLICIT `router.enabled: true` is an
+            # Same rule as the closed_set case above: only an explicit `router.enabled: true` is an
             # error. The field defaults to true because routing is the point of this block, and the
-            # DEFAULT backend is the phrase grounder, so a bare `pipeline: {}` would otherwise be
+            # Default backend is the phrase grounder, so a bare `pipeline: {}` would otherwise be
             # rejected for a combination nobody wrote.
             if "router" in self.model_fields_set and "enabled" in self.router.model_fields_set:
                 raise ValueError(

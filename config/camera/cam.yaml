@@ -126,12 +126,12 @@ cameras:
       calibration_paths:
         base_dir: calibration/stereo_dev3
 
-    # --- RGB-D Kamera (z.B. Intel RealSense D435) ---
-    # ONE camera: serial_number: null opens the first available RealSense (device_index is NOT read by
-    # RealSenseRGBDStreamer, only the serial). A TWO-camera cell (the September UR3e rig is 2x D435
-    # eye-to-hand) needs TWO rigs here, each with its OWN serial_number, so each opens the right physical
+    # --- RGB-D Kamera (z.B. Intel RealSense d435) ---
+    # One camera: serial_number: null opens the first available RealSense (device_index is not read by
+    # RealSenseRGBDStreamer, only the serial). A two-camera cell (the September UR3e rig is 2x d435
+    # eye-to-hand) needs two rigs here, each with its own serial_number, so each opens the right physical
     # device. The serials are a bench fact of the specific cameras, so the second rig is added at bring-up,
-    # not shipped with a placeholder. The per-camera EXTRINSICS map is separate: see decision D2 and
+    # not shipped with a placeholder. The per-camera extrinsics map is separate: see decision D2 and
     # robot.grasping.fusion.cameras.
     - rig_id: realsense_d435
       enabled: false

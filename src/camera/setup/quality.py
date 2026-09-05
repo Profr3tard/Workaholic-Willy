@@ -22,8 +22,8 @@ def configure_camera_for_quality(
     Configure an already opened OpenCV VideoCapture object for higher image quality
     and lower latency.
 
-    The function attempts to set the preferred pixel format (uncompressed YUY2/YUYV
-    or compressed MJPG), resolution, frame rate, and several optional camera
+    The function attempts to set the preferred pixel format (uncompressed yuy2/yuyv
+    or compressed mjpg), resolution, frame rate, and several optional camera
     properties such as exposure, gain, and white balance. It also tries to disable
     automatic camera features like auto white balance and autofocus when requested.
 
@@ -43,8 +43,8 @@ def configure_camera_for_quality(
         fps (int):
             Desired frames per second.
         prefer_uncompressed (bool):
-            If True, try to use an uncompressed format (YUY2, fallback YUYV).
-            If False, use MJPG.
+            If True, try to use an uncompressed format (yuy2, fallback yuyv).
+            If False, use mjpg.
         manual_exposure (float | None, optional):
             Manual exposure value to set. If None, exposure is not changed manually.
         manual_gain (float | None, optional):
@@ -63,11 +63,11 @@ def configure_camera_for_quality(
     Returns:
         dict:
             A dictionary containing the actual camera settings read back from the
-            device after configuration. Includes raw and decoded FOURCC as well as
+            device after configuration. Includes raw and decoded fourcc as well as
             image and image-processing related properties.
 
     Keys in returned dictionary:
-        - fourcc (int): Raw FOURCC integer value.
+        - fourcc (int): Raw fourcc integer value.
         - width (int): Actual frame width.
         - height (int): Actual frame height.
         - fps (float): Actual frame rate.
@@ -78,7 +78,7 @@ def configure_camera_for_quality(
         - contrast (float): Contrast setting.
         - saturation (float): Saturation setting.
         - sharpness (float): Sharpness setting.
-        - fourcc_str (str): FOURCC decoded as a readable 4-character string.
+        - fourcc_str (str): fourcc decoded as a readable 4-character string.
 
     Raises:
         No exceptions are raised explicitly by this function. However, OpenCV or

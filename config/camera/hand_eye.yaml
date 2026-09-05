@@ -1,6 +1,6 @@
 hand_eye:
   # NOTE: these `enabled` flags are documentation only: no code reads them (verified). They record the
-  # cell's intended posture. The September rig is TWO fixed eye-to-hand D435s, so eye_to_hand is the base
+  # cell's intended posture. The September rig is two fixed eye-to-hand D435s, so eye_to_hand is the base
   # default; the sim overlay (hand_eye.sim.yaml) already sets eye_to_hand too. A wrist-camera cell flips
   # them back.
   # Fixed-camera workflow: returns Transform(CAMERA -> BASE).
