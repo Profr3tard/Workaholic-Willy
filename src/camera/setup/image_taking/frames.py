@@ -18,7 +18,11 @@ def _validate_frame_array(value: np.ndarray, *, name: str, allow_empty: bool = F
 
 @dataclass(frozen=True, slots=True)
 class StereoFrame:
-    """Left / right BGR frame pair from any stereo rig."""
+    """A left and a right BGR frame from a stereo rig.
+
+    Both eyes must be non-empty numeric image arrays of the same height and width.
+    """
+
     left: np.ndarray
     right: np.ndarray
 
@@ -33,7 +37,12 @@ class StereoFrame:
 
 @dataclass(frozen=True, slots=True)
 class RGBDFrame:
-    """Colour (BGR uint8) + depth (uint16, millimetres) from an RGB-D camera."""
+    """Colour (BGR uint8) and depth (uint16, millimetres) from an RGB-D camera.
+
+    Depth may be an empty array when the device delivered none. A depth array that is not
+    empty must match the colour frame in height and width.
+    """
+
     color: np.ndarray
     depth: np.ndarray
 
@@ -46,6 +55,6 @@ class RGBDFrame:
         object.__setattr__(self, "depth", depth)
 
 
-# The two frame kinds a rig-keyed provider/consumer fronts (R9.1): a StereoFrame (left/right) or an
-# RGBDFrame (colour/depth). A readability alias for the heterogeneous return/param union.
+# Either frame kind a rig-keyed provider or consumer handles: a StereoFrame carrying two eyes, or
+# an RGBDFrame carrying colour and depth. Used where a return type or a parameter takes both.
 AnyFrame = StereoFrame | RGBDFrame

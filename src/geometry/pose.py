@@ -1,15 +1,15 @@
 """:class:`Pose`, a frame-tagged, immutable rigid pose in 3D space.
 
-It replaces ad-hoc tuples, numpy arrays and vendor-specific structs such as
-``URPose`` on every public API. The numerics contract is:
+Public APIs across the stack pass a ``Pose`` rather than an ad-hoc tuple, a
+bare ndarray or a vendor struct such as ``URPose``. The numerics contract is:
 
 * ``position_mm``      (3,) float64, millimetres
 * ``quaternion_xyzw``  (4,) float64, unit length, canonical sign
 * ``frame``            :class:`~src.geometry.frame.Frame`
 * ``label``            optional human-readable tag
 
-Both ndarray fields are made read-only at construction, so a consumer cannot
-silently mutate them.
+Both ndarray fields are read-only from construction on, so a consumer cannot
+mutate a pose it was handed.
 """
 
 from __future__ import annotations
@@ -38,13 +38,12 @@ __all__ = ["Pose"]
 class Pose:
     """A rigid 6-DoF pose tagged with its coordinate frame.
 
-    Construction validates and normalises its inputs: the position is coerced
-    to ``float64`` and checked for shape (3,) and finiteness, the quaternion is
-    normalised into canonical sign form (``w >= 0``), and both ndarrays are
-    made read-only.
+    Construction coerces the position to ``float64`` and checks it for shape
+    (3,) and finiteness, normalises the quaternion into canonical sign form
+    (``w >= 0``), and makes both ndarrays read-only.
 
-    Equality and hashing compare the arrays byte-wise after canonicalisation,
-    which is well defined precisely because of that sign convention.
+    Equality and hashing compare the arrays byte-wise, which is well defined
+    only because of that sign convention.
     """
 
     position_mm: np.ndarray
@@ -88,17 +87,17 @@ class Pose:
         t, q = matrix_to_position_quaternion(T)
         return cls(position_mm=t, quaternion_xyzw=q, frame=frame, label=label)
 
-    # Conversions
+    # Conversions and copies
 
     def to_matrix(self) -> np.ndarray:
         """Return a fresh 4x4 homogeneous transform (mm) for this pose."""
         return position_quaternion_to_matrix(self.position_mm, self.quaternion_xyzw)
 
     def with_frame(self, frame: Frame) -> Pose:
-        """Return a copy carrying a different frame label.
+        """Return a copy tagged with ``frame``.
 
-        This relabels the pose and does not transform it. Use
-        :meth:`Transform.apply_pose` for an actual coordinate change.
+        The numbers are unchanged: this relabels the pose, it does not
+        transform it. :meth:`Transform.apply_pose` is the coordinate change.
         """
         return Pose(
             position_mm=self.position_mm.copy(),
@@ -119,7 +118,7 @@ class Pose:
     # Geometry helpers
 
     def distance_to(self, other: Pose) -> float:
-        """Euclidean distance in mm between two poses. The frames must match."""
+        """Euclidean distance in mm between two poses, which must share a frame."""
         if self.frame != other.frame:
             raise FrameMismatchError(
                 f"distance_to: frame mismatch {self.frame!r} vs {other.frame!r}"
@@ -127,7 +126,7 @@ class Pose:
         return float(np.linalg.norm(self.position_mm - other.position_mm))
 
     def angle_to(self, other: Pose) -> float:
-        """Geodesic angle in radians, 0 to pi, between two pose orientations."""
+        """Geodesic angle in radians, 0 to pi, between two orientations in one frame."""
         if self.frame != other.frame:
             raise FrameMismatchError(
                 f"angle_to: frame mismatch {self.frame!r} vs {other.frame!r}"
@@ -135,10 +134,14 @@ class Pose:
         return angle_between(self.quaternion_xyzw, other.quaternion_xyzw)
 
     def axis_angle_rad(self) -> np.ndarray:
-        """Return the axis-angle vector (rad) equivalent to the quaternion."""
+        """Return the axis-angle vector equivalent to the quaternion.
+
+        The direction is the rotation axis and the norm is the angle in
+        radians.
+        """
         return to_axis_angle(self.quaternion_xyzw)
 
-    # Equality and hashing
+    # Equality, hashing and display
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Pose):

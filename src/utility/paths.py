@@ -1,19 +1,19 @@
 """Cross-platform path helpers.
 
-Every filesystem-layout decision lives here, so the codebase behaves identically
-on Windows and Linux. All paths are ``pathlib.Path``, never raw strings with
+Every filesystem-layout decision lives here, so the code behaves identically on
+Windows and Linux. All paths are ``pathlib.Path``, never raw strings with
 ``\\`` separators.
 
 Three environment variables override the defaults:
 
-* ``WILLY_PROJECT_ROOT`` the project root, which otherwise is the folder that
-  holds ``src/``.
-* ``WILLY_LOG_DIR``      the logs root, which otherwise is ``<root>/logs``.
-* ``WILLY_DEBUG_DIR``    the debug image root, which otherwise is ``<logs>/debug``.
+* ``WILLY_PROJECT_ROOT`` the project root, otherwise the folder that holds
+  ``src/``.
+* ``WILLY_LOG_DIR``      the logs root, otherwise ``<root>/logs``.
+* ``WILLY_DEBUG_DIR``    the debug image root, otherwise ``<logs>/debug``.
 
-Two things here earn a line in ``logs/utility/paths.log``: a project root that
-had to be guessed, and the bounded-bucket rotation, which is the only place in
-this package that deletes a file.
+Two events reach ``logs/utility/paths.log``: a project root that had to be
+guessed, and the bounded-bucket rotation in :func:`rotate_files`, the only place
+in this package that deletes a file.
 """
 
 from __future__ import annotations
@@ -41,9 +41,9 @@ def _log() -> Logger:
     """Logger for this module, built on first use. See :func:`utility_logger`.
 
     Call it only where a line is actually going to be emitted. ``create_logger``
-    opens the rotating file eagerly, so touching this accessor on a hot happy
-    path, and ``project_root`` runs on every lookup here, leaves a permanently
-    empty ``paths.log`` behind even at debug.
+    opens the rotating file eagerly, and ``project_root`` runs on every path
+    lookup here, so touching this accessor on a hot happy path leaves a
+    permanently empty ``paths.log`` behind even at debug level.
     """
     return utility_logger("UtilityPaths", PATHS_LOG_FILE)
 
@@ -61,9 +61,9 @@ def project_root() -> Path:
     Resolution order:
 
     1. The ``WILLY_PROJECT_ROOT`` environment variable, if set.
-    2. Walk up from this file until a directory holds ``src`` together with
-       either ``requirements.txt`` or ``pyproject.toml``.
-    3. Two levels up from this file, since it is ``src/utility/paths.py``.
+    2. The nearest ancestor directory that holds ``src`` together with either
+       ``requirements.txt`` or ``pyproject.toml``.
+    3. Two levels up from this file, which sits at ``src/utility/paths.py``.
     """
     env = _from_env("WILLY_PROJECT_ROOT")
     if env is not None:
@@ -80,9 +80,9 @@ def project_root() -> Path:
     # utility/paths.py -> utility -> src -> <root>
     #
     # Nothing matched, so this is a guess from the depth of this file alone. It
-    # is right in a normal checkout and wrong once the package is vendored or
-    # installed elsewhere, and every caller that builds a path off the root then
-    # inherits the mistake silently, which is why the warning carries the fix.
+    # holds in a normal checkout and breaks once the package is vendored or
+    # installed elsewhere, where every caller building a path off the root
+    # inherits the mistake silently. The warning below names the fix.
     fallback = here.parents[2]
     _log().warning(
         "project_root: no ancestor of %s holds src/ plus requirements.txt or "
@@ -116,9 +116,9 @@ def rotate_files(
 ) -> int:
     """Delete the oldest files in ``directory`` so that at most ``max_files`` remain.
 
-    Only files matching one of the ``patterns`` globs are considered. Returns
-    the number of files removed. A missing directory is ignored, so this is safe
-    to call eagerly on a fresh install.
+    Only files matching one of the ``patterns`` globs count towards the cap.
+    Returns the number of files removed. A missing directory is ignored, so this
+    can be called before anything has written to the directory.
     """
     d = Path(directory)
     if not d.is_dir() or max_files <= 0:
@@ -144,14 +144,14 @@ def rotate_files(
             f.unlink()
             removed += 1
         except OSError:
-            # Best-effort, since another process may hold the file.
+            # Best effort: another process may hold the file.
             failed += 1
             continue
 
     # One line per call rather than per file, at info because this is the only
-    # helper in the package that destroys data. It runs on every debug_dir()
-    # call, and the answerable question afterwards is how many went from which
-    # bucket, never which artefact happened to be oldest.
+    # helper in the package that deletes data. It runs on every debug_dir()
+    # call, and the answerable question afterwards is how many files left which
+    # bucket, not which artefact was oldest.
     if removed:
         _log().info(
             "rotate_files: removed %d of %d matching file(s) from %s (cap %d)",
@@ -161,8 +161,8 @@ def rotate_files(
             max_files,
         )
     if failed:
-        # A locked file is the one way the bound here quietly stops holding: the
-        # bucket keeps growing and nothing else would ever say so.
+        # A locked file is the one way the cap quietly stops holding: the bucket
+        # keeps growing and nothing else reports it.
         _log().warning(
             "rotate_files: %d file(s) in %s could not be deleted (held by another "
             "process?); the directory stays above its %d-file cap",
@@ -181,9 +181,10 @@ def debug_dir(
 ) -> Path:
     """Return a per-module debug directory under ``logs/debug/<subdir>``.
 
-    Creates the directory and rotates older files so the bucket never grows
-    unbounded. Use this instead of dropping debug artefacts into the current
-    working directory.
+    ``subdir`` is a single path segment: a separator or ``..`` raises
+    ``ValueError``. The directory is created and then rotated through
+    :func:`rotate_files`, so the bucket never grows unbounded. Write debug
+    artefacts here rather than into the current working directory.
     """
     if not subdir or any(ch in subdir for ch in ("/", "\\", "..")):
         raise ValueError(f"debug_dir: invalid subdir {subdir!r}")
@@ -192,7 +193,7 @@ def debug_dir(
     base = env if env is not None else logs_dir() / "debug"
     target = base / subdir
     target.mkdir(parents=True, exist_ok=True)
-    # No log line of its own: this runs once per saved debug image, and
-    # rotate_files below already names the bucket when anything happens to it.
+    # No log line here: this runs once per saved debug image, and rotate_files
+    # names the bucket whenever it deletes anything.
     rotate_files(target, max_files=max_files, patterns=rotate_patterns)
     return target

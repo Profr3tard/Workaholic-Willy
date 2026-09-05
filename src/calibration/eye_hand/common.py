@@ -1,4 +1,7 @@
-"""Shared implementation for eye-hand calibrators."""
+"""Implementation shared by the two eye-hand calibrators.
+
+Sample acceptance, the readiness checks a solve needs and the AX=XB call.
+"""
 
 from __future__ import annotations
 
@@ -64,7 +67,11 @@ def _rotation_axis_from_relative(relative_transform: np.ndarray) -> np.ndarray |
 
 
 class BaseEyeHandCalibrator:
-    """Base class shared by the two explicit hand-eye workflows."""
+    """Sample collection and solving shared by the two hand-eye workflows.
+
+    Subclasses build the A and B motion pairs their mounting requires and tag
+    the solved transform with its frames.
+    """
 
     def __init__(
         self,
@@ -90,10 +97,15 @@ class BaseEyeHandCalibrator:
         T_cam_to_marker: np.ndarray | None,
         marker_id: int = 0,
     ) -> bool:
-        """Validate and append a sample, returning False for skipped detections."""
+        """Append a sample, returning False when it cannot be used.
+
+        A sample is refused when no marker pose was detected, or when the robot
+        pose is not more than ``min_distance_mm`` or ``min_angle_deg`` away from
+        every pose already stored. Both refusals are logged.
+        """
         if T_cam_to_marker is None:
-            # A skipped detection is a silent `False` to the caller, so the reason only
-            # survives here; the robot-level routine just sees "sample rejected".
+            # The caller only gets `False` back, so this line is the one record
+            # of why the sample was dropped.
             logger.info("Sample skipped: no marker pose (marker_id=%d).", marker_id)
             return False
         sample = EyeHandSample(

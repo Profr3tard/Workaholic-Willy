@@ -1,4 +1,4 @@
-"""Typed eye-hand calibration models."""
+"""Mounting mode, acceptance settings and result type for eye-hand calibration."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ __all__ = [
 
 
 class MountingMode(StrEnum):
-    """Supported camera mounting modes for hand-eye calibration."""
+    """Where the camera sits: fixed in the cell, or carried on the robot tool."""
 
     EYE_TO_HAND = "eye_to_hand"
     EYE_IN_HAND = "eye_in_hand"
@@ -34,7 +34,12 @@ class MountingMode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class EyeHandCalibrationSettings:
-    """Runtime settings for eye-hand sample acceptance and solving."""
+    """Thresholds for accepting eye-hand samples and for solving.
+
+    A pose is accepted only if it differs from every stored pose by more than
+    ``min_distance_mm`` or ``min_angle_deg``. ``min_samples`` may not fall
+    below four, the smallest set AX=XB can be solved from.
+    """
 
     min_samples: int = 4
     min_distance_mm: float = 10.0
@@ -55,7 +60,13 @@ class EyeHandCalibrationSettings:
 
     @classmethod
     def from_config(cls, config: object) -> EyeHandCalibrationSettings:
-        """Build settings from a Pydantic-style config object without coupling to it."""
+        """Build settings from any object carrying the settings attributes.
+
+        Attributes are read with :func:`getattr`, so this package does not import
+        the config schema. ``min_samples`` and ``min_distance_mm`` are required;
+        the angle is read from ``min_angle_deg`` or ``min_angle`` and falls back
+        to 5.0 degrees.
+        """
         angle = getattr(config, "min_angle_deg", getattr(config, "min_angle", 5.0))
         return cls(
             min_samples=int(getattr(config, "min_samples")),
@@ -66,7 +77,12 @@ class EyeHandCalibrationSettings:
 
 @dataclass(frozen=True, slots=True)
 class EyeHandCalibrationResult:
-    """Frame-checked result returned by either eye-hand workflow."""
+    """Frame-checked result of one eye-hand solve.
+
+    The transform runs CAMERA to BASE for ``EYE_TO_HAND`` and CAMERA to TOOL for
+    ``EYE_IN_HAND``. Errors are millimetres, ``max_error_mm`` may not sit below
+    ``rmse_mm``, and ``captured_at`` must be timezone-aware.
+    """
 
     mode: MountingMode
     transform: Transform
@@ -128,7 +144,12 @@ class EyeHandCalibrationResult:
         )
 
     def to_extrinsics(self, *, rig_id: str) -> Extrinsics:
-        """Convert an eye-to-hand result into persisted camera-to-base extrinsics."""
+        """Convert an eye-to-hand result into camera-to-base :class:`Extrinsics`.
+
+        Only ``EYE_TO_HAND`` converts: an eye-in-hand transform ends at the tool,
+        and :class:`Extrinsics` holds CAMERA to BASE. ``rig_id`` names the camera
+        rig the calibration belongs to.
+        """
         if self.mode is not MountingMode.EYE_TO_HAND:
             raise CalibrationDataError("only eye_to_hand results can be saved as Extrinsics")
         return Extrinsics(

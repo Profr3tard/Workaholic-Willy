@@ -1,4 +1,4 @@
-"""Canonical frame dataclasses and runtime streamers."""
+"""The frame dataclasses every rig returns, and the streamers that produce them."""
 
 from __future__ import annotations
 

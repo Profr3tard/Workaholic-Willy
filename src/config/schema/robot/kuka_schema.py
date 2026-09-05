@@ -12,8 +12,8 @@ from .._base import StrictModel
 class KukaEkiConfig(StrictModel):
     """EthernetKRL TCP/XML settings for the planned KUKA driver.
 
-    ``role`` is from the Python application's perspective. ``server``
-    means Willy listens and the KRL program opens the EKI connection.
+    ``role`` is stated from the Python application's side: ``server``, the
+    default, means Willy listens and the KRL program opens the connection.
     """
 
     role: Literal["server", "client"] = Field(default="server")
@@ -27,13 +27,13 @@ class KukaEkiConfig(StrictModel):
 class KukaConfig(StrictModel):
     """Vendor-specific KUKA settings.
 
-    The only transport planned for the first implementation is
-    EthernetKRL (EKI/KRL) over TCP/XML.
+    The one transport planned for the first implementation is EthernetKRL
+    (EKI/KRL) over TCP/XML.
 
-    ``controller_ip`` is the network address of the KUKA controller
-    itself. It is consulted when ``eki.role == "client"`` (Willy dials
-    the controller). When ``eki.role == "server"`` the controller dials
-    Willy and ``controller_ip`` is purely informational.
+    ``controller_ip`` is the network address of the KUKA controller itself,
+    read when ``eki.role == "client"`` and Willy dials the controller. Under
+    ``eki.role == "server"`` the controller dials Willy and ``controller_ip``
+    is informational only.
     """
 
     model: str = Field(default="unconfigured", min_length=1)

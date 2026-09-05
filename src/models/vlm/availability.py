@@ -1,14 +1,13 @@
 """What happens when the VLM cannot be loaded: refuse the prompt, or degrade with a warning.
 
 ``refuse`` means the prompt is not taken at all; ``degrade`` means the fallback answers it and every
-such answer is warned about. Both halves are the owner's stated rule, and the default is ``refuse``,
-because silently degrading is the failure this whole route exists to prevent.
+such answer is warned about. The default is ``refuse``, because a silent degrade is the failure this
+route exists to prevent.
 
-The complex prompts that reach the VLM route are the ones the phrase grounder gets confidently
-wrong: it returns a high-scoring box for the wrong object rather than admitting defeat. So a quiet
-fallback does not mean "slightly worse perception"; it means the cell grasps something the operator
-did not ask for, with nothing in the log to say why. Refusing is the safe reading of an ambiguous
-situation; degrading is a deliberate choice made in config and always announced.
+The complex prompts that reach this route are the ones the phrase grounder gets confidently wrong:
+it returns a high-scoring box for the wrong object rather than admitting defeat. A quiet fallback
+therefore does not mean slightly worse perception; it means the cell grasps something the operator
+did not ask for, with nothing in the log to say why.
 """
 
 from __future__ import annotations
@@ -24,19 +23,18 @@ from src.utility.log_cfg import create_logger
 __all__ = ["VlmUnavailableError", "GuardedVlmBackend"]
 
 #: The default sink for this module's two lines. Under a bare ``getLogger`` the degrade warning
-#: below, the one thing this module exists to make impossible to miss, has no handler and is
-#: discarded. The name stays ``__name__``, and an injected ``logger=`` still overrides it per
-#: instance.
+#: below has no handler and is discarded, and that is the one line here that must not be lost. The
+#: name stays ``__name__``; an injected ``logger=`` overrides it per instance.
 _LOG = create_logger(__name__, log_file=VLM_AVAILABILITY_LOG_FILE, log_dir=MODELS_LOG_DIR)
 
 
 class VlmUnavailableError(RuntimeError):
     """The VLM route was required and the model could not be loaded.
 
-    Carries the underlying cause so an operator sees why: weights missing, dependency absent, out of
-    VRAM, rather than only that something failed. Raised rather than returned as an empty result,
-    because "no objects found" and "I could not look" are different answers and the pick loop must
-    not treat the second as the first.
+    Carries the underlying cause, so an operator sees whether the weights are missing, a dependency
+    is absent or the GPU is out of VRAM. Raised rather than returned as an empty result: "no
+    objects found" and "I could not look" are different answers, and the pick loop must not treat
+    the second as the first.
     """
 
     def __init__(self, model_id: str, cause: BaseException | None = None) -> None:
@@ -55,13 +53,12 @@ class GuardedVlmBackend:
 
     Delegates to ``vlm`` while it works. The first time loading fails it either raises
     :class:`VlmUnavailableError` (``refuse``) or hands over to the fallback (``degrade``), and the
-    degrade path logs a warning every time it is used, not once. A one-shot warning scrolls out of a
-    terminal and the run then looks normal for an hour; the cost of a repeated line is nothing next
-    to a silently wrong grasp.
+    degrade path warns on every use rather than once, so a run that has fallen back never looks
+    normal again.
 
-    The fallback arrives as a factory, not an instance, and is built only if degradation actually
-    happens. Constructing it eagerly would load GroundingDINO and SAM2 on every cell that merely
-    might degrade, spending seconds and gigabytes of VRAM on a path a healthy cell never runs.
+    The fallback arrives as a factory, not an instance, and is built only if degradation happens.
+    Constructing it eagerly would load GroundingDINO and SAM2 on every cell that merely might
+    degrade, spending seconds and gigabytes of VRAM on a path a healthy cell never runs.
     """
 
     def __init__(
@@ -99,9 +96,8 @@ class GuardedVlmBackend:
             except VlmUnavailableError as exc:
                 self._unavailable = exc.cause or exc
             except (ImportError, OSError, RuntimeError) as exc:
-                # The three shapes a missing or unloadable model takes: no dependency, no weights
-                # on disk, no VRAM. Anything else is a real bug and must not be swallowed into a
-                # fallback that hides it.
+                # The three shapes a missing or unloadable model takes: no dependency, no weights on
+                # disk, no VRAM. Anything else is a bug and must not be swallowed by a fallback.
                 self._unavailable = exc
             if self._unavailable is not None:
                 self._log.error(

@@ -5,8 +5,8 @@ Exit codes:
 * 1: :class:`src.config.ConfigError` raised (file, parse or schema error)
 * 2: bad CLI arguments
 
-A query that finds nothing still exits 0: ``explain`` prints "not a known key" with suggestions and
-``where`` prints "no config key matches".
+A query that finds nothing still exits 0: ``explain`` reports the key as unknown and offers near
+matches, ``where`` prints "no config key matches".
 
 Examples::
 
@@ -18,10 +18,10 @@ Examples::
     python -m src.config explain robot.safety.self_collision.planner_margin_mm --profile sim,ur3e
     python -m src.config where gripper
 
-``explain`` reports a key's type, constraints, default, which file and layer set the winning value, the
-whole override chain, and the comment its author wrote above that line, the measured why that
-``yaml.safe_load`` throws away. ``where`` searches the schema rather than the files, so it finds the
-fields no YAML mentions (measured: 107 of them, including ``robot.ur.model``).
+``explain`` reports a key's type, constraints, default, which file and layer set the winning value,
+the whole override chain, and the comment written above that line, which ``yaml.safe_load`` discards.
+``where`` searches the schema rather than the files, so it finds the fields no YAML mentions
+(measured: 107 of them, including ``robot.ur.model``).
 """
 
 from __future__ import annotations
@@ -35,11 +35,11 @@ from .tree import ConfigTree
 
 
 def _emit(text: str) -> None:
-    """Print without ever dying on the console's encoding.
+    """Print without failing on the console's encoding.
 
     The config's own comments contain box-drawing characters and typographic dashes, and a stock
     Windows console is cp1252, where printing one raises UnicodeEncodeError. Unrepresentable
-    characters are replaced instead: losing a dash beats losing the answer.
+    characters are replaced so that the answer still reaches the operator.
     """
     encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
     try:
@@ -56,25 +56,24 @@ def _emit(text: str) -> None:
 def _shared_options() -> argparse.ArgumentParser:
     """The flags that work on both sides of the subcommand, a fresh parser on every call.
 
-    Two argparse facts collide here, and the collision is silent:
+    Two argparse behaviours interact here, and neither announces itself:
 
     1. ``default=SUPPRESS`` is what makes ``config --profile sim explain KEY`` work at all. With a
-       normal default, the subparser's copy of the flag writes that default into the namespace after
-       the top-level parser stored the real value, so a flag given before the subcommand is discarded
-       and the tool answers about the base tree.
+       normal default the subparser's copy of the flag writes that default into the namespace after
+       the top-level parser stored the real value, so a flag given before the subcommand is lost and
+       the tool answers about the base tree.
     2. :meth:`ArgumentParser.set_defaults` mutates the Action objects it matches, and ``parents=``
-       shares Action instances rather than copying them. With one shared parent parser, the top
-       level's ``set_defaults`` therefore rewrites the subparser's ``SUPPRESS`` back to ``None``,
-       which reintroduces (1).
+       shares Action instances rather than copying them, so with one shared parent the top level's
+       ``set_defaults`` rewrites the subparser's ``SUPPRESS`` back to ``None`` and reinstates (1).
 
-    Handing every parser its own instance keeps ``set_defaults`` local to the top-level parser.
+    A fresh parser per caller keeps ``set_defaults`` local to the top-level parser.
     """
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--data", metavar="DIR", default=argparse.SUPPRESS,
         help="path to a custom data/ directory (default: config)",
     )
-    # `--print` sits on this shared parent although only the default command reads it. Without it,
+    # `--print` stays on this shared parent although only the default command reads it. Without it,
     # `config --print explain KEY` fails with argparse's generic "unrecognized arguments"; with it,
     # the parse succeeds and `main` can refuse by naming the command that does accept the flag.
     parser.add_argument(
@@ -131,13 +130,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    # A flag that cannot apply is rejected, not accepted and ignored, which would answer a question
-    # nobody asked. Both flags below ride the shared parent parser onto the subcommands, where
-    # nothing reads them: `--print` dumps the validated tree and is only read after every subcommand
-    # has returned, and `find_keys` behind `where` takes no root at all, so `--data` / `--profile`
-    # cannot change an answer that comes from the schema compiled into this checkout. Exit 2 is
-    # argparse's own "bad arguments", the meaning documented at the top of this file, and each
-    # message names the command that does accept the flag.
+    # A flag that cannot apply is rejected rather than accepted and ignored. Both flags below ride
+    # the shared parent parser onto the subcommands, where nothing reads them: `--print` dumps the
+    # validated tree and is read only after every subcommand has returned, and `find_keys` behind
+    # `where` takes no root at all, so `--data` and `--profile` cannot change an answer that comes
+    # from the schema compiled into this checkout. Exit 2 is argparse's own bad-arguments code,
+    # documented at the top of this file, and each message names the command that accepts the flag.
     if args.command is not None and args.print:
         parser.error(
             f"--print dumps the whole validated config, which is what the default command does; "
@@ -159,9 +157,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # `ConfigTree` derives root, chain and layers once and its ask methods take only the key, so a
-    # value and its provenance cannot be built from two different expressions. The profile travels as
-    # an argument rather than through `WILLY_PROFILE`, so the `source` that `_validated_chain` carries
-    # names what the operator typed instead of blaming an environment variable nobody exported.
+    # value and its provenance cannot come from two different expressions. The profile is passed as
+    # an argument rather than through `WILLY_PROFILE`, so the `source` that `_validated_chain`
+    # carries names what the operator typed and not an environment variable nobody set.
     loaded = ConfigTree.from_directory(
         root=args.data if args.data is not None else UNSET,
         profile=args.profile if args.profile is not None else UNSET,

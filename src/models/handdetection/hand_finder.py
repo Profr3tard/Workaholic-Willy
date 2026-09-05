@@ -3,17 +3,17 @@
 The 2-D detectors give a palm centre in pixels. Turning that into millimetres in the base frame
 takes depth and two transforms, and the two supported camera kinds get there differently:
 
-* RGB-D (`RGBDFrame`): read the depth map at the palm, back-project through the colour intrinsics.
-  Needs a `K` per rig.
+* RGB-D (`RGBDFrame`): read the depth map at the palm and back-project through the colour
+  intrinsics. Needs a `K` per rig.
 * Stereo (`StereoFrame`): rectify the pair and ask `StereoCam3D` for a robust 3-D point inside a
-  small mask around the palm. Needs the rig's stereo calibration, which `StereoCam3D` already holds.
+  small mask around the palm. Needs the rig's stereo calibration, which `StereoCam3D` holds.
 
-Transforms and intrinsics are per-rig facts and `find_hand` iterates over several rigs, so neither
-is held as a single global value. `transforms` is keyed by rig id and a rig missing from it is
-skipped with a warning, because one rig's `T_cam_to_base` applied to another rig's detection
-produces confident, wrong base coordinates. An RGB-D rig without intrinsics refuses rather than
-substituting `fx = fy = width / 2`, which is not a camera but a number that makes the arithmetic
-complete: that substitution returns a plausible-looking position that no measurement supports.
+Intrinsics and transforms are per-rig facts and `find_hand` iterates over several rigs, so neither
+is held as a single value. `transforms` is keyed by rig id, and a rig missing from it is skipped
+with a warning: one rig's `T_cam_to_base` applied to another rig's detection yields confident,
+wrong base coordinates. An RGB-D rig without intrinsics refuses rather than substituting
+`fx = fy = width / 2`, which completes the arithmetic and returns a position no measurement
+supports.
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ __all__ = ["HandFinder", "HandObserver"]
 class HandObserver(Protocol):
     """What `HandFinder` needs from a 2-D model: hands in a frame, each with a gesture.
 
-    Structural on purpose. `PalmDetector` satisfies it with `gesture=NONE` on every observation, and
-    `ThumbGestureRecognizer` satisfies it with a real reading, so the 3-D search does not have to
-    know, or branch on, which model the operator configured.
+    Structural, so the 3-D search never branches on which model the operator configured.
+    `PalmDetector` satisfies it with `gesture=NONE` on every observation, `ThumbGestureRecognizer`
+    with a real reading.
     """
 
     def observe(self, frame_bgr: np.ndarray) -> list[HandObservation]: ...
@@ -58,10 +58,10 @@ class HandFinder:
     observer:
         The 2-D model. See `HandObserver`.
     provider:
-        An already-opened `FrameProvider`. Not opened or released here: whoever opened the
+        An already-opened `FrameProvider`. Neither opened nor released here: whoever opened the
         cameras closes them.
     transforms:
-        `{rig_id: 4x4 CAMERA->BASE}`. A rig missing from this map cannot be turned into base-frame
+        `{rig_id: 4x4 CAMERA->BASE}`. A rig missing from this map cannot be expressed in base
         coordinates and is skipped.
     stereo:
         The stereo engine, or `None` on an all-RGB-D cell.
@@ -70,10 +70,10 @@ class HandFinder:
     rig_ids:
         Search order. Defaults to every rig the provider knows, primary first.
     palm_patch_radius_px:
-        Radius of the disc around the palm centre used for a robust (median) depth.
+        Radius of the disc around the palm centre whose median depth is taken.
     min_depth_samples:
-        How many valid depth pixels that disc must contain before its median is trusted. A median
-        over three surviving pixels is a number, not a measurement.
+        How many valid depth pixels that disc must hold before its median is trusted. Below this
+        the median is noise rather than a measurement.
     """
 
     def __init__(
@@ -119,9 +119,9 @@ class HandFinder:
     def find_hand(self) -> tuple[Optional[LocatedHand], Optional[np.ndarray]]:
         """Search every rig in order for exactly one hand with usable depth.
 
-        Exactly one, not the best of several: this is used to decide where a robot may move, and
-        "there are two hands in the workspace" is a reason to stop, not to pick one. Returns the
-        located hand and an annotated BGR image, or `(None, None)`.
+        Exactly one, not the best of several: the answer decides where a robot may move, and two
+        hands in the workspace is a reason to stop rather than to choose. Returns the located hand
+        and an annotated BGR image, or `(None, None)`.
         """
         for rig_id in self.rig_ids:
             frame = self.provider.grab(rig_id)
@@ -161,7 +161,10 @@ class HandFinder:
     def locate(
         self, observation: HandObservation, frame: AnyFrame, rig_id: str
     ) -> Optional[HandPosition3D]:
-        """Base-frame position for one observed hand, or `None` when depth is unusable."""
+        """Base-frame position for one observed hand.
+
+        `None` when the rig has no CAMERA->BASE transform or its depth at the palm is unusable.
+        """
         transform = self.transforms.get(rig_id)
         if transform is None:
             self.logger.warning(
@@ -220,11 +223,11 @@ class HandFinder:
     def _patch_depth_mm(
         self, depth: np.ndarray, centre: tuple[float, float], rig_id: str
     ) -> Optional[float]:
-        """Median depth over a disc at the palm centre, or `None` if too little of it is valid.
+        """Median depth over a disc at the palm centre, or `None` if too few pixels in it are valid.
 
-        The median (not the single centre pixel) because depth maps drop out on skin and edges; the
-        sample-count floor because a median over a handful of survivors is indistinguishable from
-        noise and would be handed onward as a hand position.
+        A median rather than the single centre pixel, because depth maps drop out on skin and at
+        edges. A floor on the sample count, because a median over a handful of survivors is noise
+        that would be handed onward as a hand position.
         """
         import cv2 as cv
 
@@ -321,9 +324,8 @@ class HandFinder:
     def _work_image(frame: AnyFrame) -> np.ndarray:
         """The BGR image a 2-D model should look at: colour for RGB-D, the left eye for stereo.
 
-        `isinstance` rather than `hasattr("color")`: a duck-typed check accepts any object with a
-        `color` attribute, which is how a wrong frame type reaches inference and fails several
-        layers later.
+        `isinstance` rather than a check for a `color` attribute, which any object can carry and
+        which lets a wrong frame type reach inference and fail several layers later.
         """
         if isinstance(frame, RGBDFrame):
             return frame.color
@@ -333,7 +335,7 @@ class HandFinder:
 
     @staticmethod
     def _annotation(gesture: GestureReading) -> Optional[str]:
-        """The overlay label, or nothing when there is no gesture worth drawing."""
+        """The overlay label, or `None` when the reading is `HandGesture.NONE`."""
         if gesture.gesture is HandGesture.NONE:
             return None
         return f"{gesture.gesture.value} {gesture.confidence:.2f}"

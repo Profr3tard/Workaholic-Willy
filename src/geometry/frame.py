@@ -1,12 +1,12 @@
 """Coordinate frames for the geometry subsystem.
 
 Every public :class:`~src.geometry.pose.Pose` and
-:class:`~src.geometry.transform.Transform` carries an explicit :class:`Frame`.
-There are no implicit or unnamed frames in public APIs.
+:class:`~src.geometry.transform.Transform` names its :class:`Frame`; the
+public API has no implicit or unnamed frames.
 
-The set is deliberately small and covers the robot vision stack:
+The set is small and covers the robot vision stack:
 
-* ``WORLD``  application-defined fixed frame, for example a table corner.
+* ``WORLD``  application-defined fixed frame, a table corner for instance.
 * ``BASE``   robot base frame, link 0 of the kinematic chain.
 * ``CAMERA`` optical frame of a mono, stereo or depth camera.
 * ``MARKER`` fiducial marker frame, origin at the marker centre.
@@ -15,8 +15,8 @@ The set is deliberately small and covers the robot vision stack:
 * ``OBJECT`` frame attached to a perceived object instance.
 * ``GRASP``  frame of a parallel-jaw grasp, Z is approach and X is closure.
 
-A subsystem that needs another frame, an IMU for instance, adds it here. Raw
-strings at call sites are what this enum exists to prevent.
+A subsystem needing another frame, an IMU for instance, adds a member here
+rather than passing a raw string at the call site.
 """
 
 from __future__ import annotations
@@ -25,7 +25,11 @@ from enum import StrEnum
 
 
 class Frame(StrEnum):
-    """Canonical coordinate frames used across the stack."""
+    """Canonical coordinate frames used across the stack.
+
+    Each member's string value is what serialization writes and reads back, so
+    those values are part of the wire format.
+    """
 
     WORLD = "world"
     BASE = "base"

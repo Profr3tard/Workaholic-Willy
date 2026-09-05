@@ -1,14 +1,14 @@
 """Read a stored camera intrinsics file back into ``(K, dist)``.
 
-The read side of decision D1, which offers two sources of intrinsics and imposes neither:
+Two sources of intrinsics exist and neither is imposed:
 
   * Factory: the device's own ``get_intrinsics()`` / ``get_distortion()``, live after ``open()``.
   * Calibrated: an ``intrinsics.json`` written by the RealSense streamer's ``_export_intrinsics``
-    or by a bench ``cv2.calibrateCamera`` run. This loader reads whichever is on disk.
+    or by a bench ``cv2.calibrateCamera`` run.
 
 A consumer that wants the factory K uses the streamer directly; one that wants a bench-calibrated K
-points this loader at the file. The two compare by the reprojection residual the calibration run
-reports.
+points this loader at the file, which reads whichever of the two is on disk. The two compare by the
+reprojection residual the calibration run reports.
 """
 
 from __future__ import annotations
@@ -24,9 +24,12 @@ __all__ = ["load_intrinsics"]
 def load_intrinsics(path: str | Path) -> tuple[np.ndarray, np.ndarray]:
     """Load ``intrinsics.json`` into a 3x3 ``K`` and a distortion vector.
 
-    Accepts the streamer's ``fx/fy/cx/cy(+dist)`` schema. A missing or empty ``dist`` yields
-    ``zeros(5)``, the "no distortion known" default a PnP solve expects. An absent file raises
-    ``FileNotFoundError`` rather than defaulting K, and a malformed one raises ``ValueError``.
+    Reads the streamer's ``fx/fy/cx/cy(+dist)`` schema. A missing or empty ``dist`` yields
+    ``zeros(5)``, the "no distortion known" default a PnP solve expects.
+
+    An absent file raises ``FileNotFoundError`` rather than defaulting K. Unreadable JSON,
+    a missing or non-numeric focal length or principal point, a focal length that is not
+    finite and positive, and non-finite distortion coefficients all raise ``ValueError``.
     """
     p = Path(path)
     if not p.is_file():

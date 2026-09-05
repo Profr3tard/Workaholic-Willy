@@ -1,13 +1,12 @@
 """Palm-centre detection: MediaPipe's hand landmarker, wrapped so the rest of the stack sees types.
 
-Running mode is video, not image. Image mode treats every frame independently, so there is no
-previous frame to track from and `min_tracking_confidence` is inert. That threshold is an
-operator-facing config key, and image mode would leave it dead in effect.
+Running mode is video rather than image. Image mode treats every frame independently, so there is
+no previous frame to track from and `min_tracking_confidence`, an operator-facing config key, would
+be inert.
 
-Video mode's cost is that MediaPipe demands strictly increasing millisecond timestamps.
-`_next_timestamp_ms` reads a monotonic clock and forces the stamp forward instead of adding a fixed
-step per call, which would mislabel the timing of every frame and break outright when a caller
-feeds frames from two sources.
+The cost of video mode is that MediaPipe demands strictly increasing millisecond timestamps.
+`_next_timestamp_ms` takes them from a monotonic clock rather than a fixed step per frame, so they
+carry real timing and stay correct when a caller feeds frames from two sources.
 """
 
 from __future__ import annotations
@@ -40,10 +39,10 @@ __all__ = ["PalmDetector", "handedness_of"]
 
 
 def handedness_of(categories: Any) -> tuple[Handedness, float]:
-    """Map MediaPipe's handedness categories onto the enum, with its score.
+    """Map MediaPipe's handedness categories onto `Handedness`, with the top category's score.
 
-    Defensive rather than trusting: the category list is empty on some results, and the label's
-    capitalisation is not something this package should depend on.
+    The list is empty on some results and the label's capitalisation is not guaranteed, so an empty
+    list gives `UNKNOWN` at score 0.0 and the label is matched lower-cased.
     """
     if not categories:
         return Handedness.UNKNOWN, 0.0
@@ -60,9 +59,9 @@ def handedness_of(categories: Any) -> tuple[Handedness, float]:
 class PalmDetector:
     """Detect hands in a BGR frame and report each palm centre in pixels.
 
-    Parameters mirror `models.handdetect` one-for-one; `build_palm_detector` in `factory.py` is the
-    config-driven constructor. Every threshold below is passed to MediaPipe; none is stored and
-    ignored.
+    Parameters mirror the `models.handdetect` config keys one-for-one, and `build_palm_detector` in
+    `factory.py` is the config-driven constructor. Every threshold here reaches MediaPipe; none is
+    stored and ignored.
     """
 
     def __init__(
@@ -80,8 +79,8 @@ class PalmDetector:
             model_path, config_key=config_key, download_url=HAND_LANDMARK_MODEL_URL
         )
 
-        # Imported here, not at module scope: this module must stay importable without the optional
-        # extra so the guard above is the thing that speaks, not a bare ModuleNotFoundError.
+        # Imported here rather than at module scope, so the module stays importable without the
+        # optional extra and `require_mediapipe` above is what reports its absence.
         from mediapipe.tasks import python
         from mediapipe.tasks.python.vision import (
             HandLandmarker,
@@ -114,8 +113,9 @@ class PalmDetector:
     def _next_timestamp_ms(self, timestamp_ms: Optional[int]) -> int:
         """A strictly increasing millisecond stamp, which is what video mode requires.
 
-        Two frames can easily land in the same millisecond on a fast machine, and MediaPipe rejects
-        a repeat rather than tolerating it, so the clock is read and then forced forward.
+        Two frames can land in the same millisecond on a fast machine and MediaPipe rejects a
+        repeated stamp, so a proposal that is not ahead of the last one is bumped by one. The lock
+        keeps that read-and-update correct when frames arrive on more than one thread.
         """
         with self._lock:
             proposed = (
@@ -135,8 +135,9 @@ class PalmDetector:
     ) -> list[PalmDetection]:
         """Detect hands in a BGR image; one `PalmDetection` per hand, possibly none.
 
-        `timestamp_ms` lets a caller that already has real frame timing pass it in; leaving it unset
-        reads a monotonic clock, which is right for a live feed.
+        Pass `timestamp_ms` when the caller already has real frame timing. Left unset, the stamp
+        comes from a monotonic clock, which is what a live feed wants. An empty image raises
+        `ValueError`.
         """
         if frame_bgr is None or getattr(frame_bgr, "size", 0) == 0:
             raise ValueError("PalmDetector.detect needs a non-empty BGR image")
@@ -149,11 +150,11 @@ class PalmDetector:
         return self._to_detections(result, frame_bgr.shape[:2])
 
     def observe(self, frame_bgr: np.ndarray) -> list[HandObservation]:
-        """`HandObserver`: the same detections, wrapped with an explicit "no gesture" reading.
+        """`HandObserver`: the same detections, each carrying an explicit "no gesture" reading.
 
-        This model has no gesture head, and saying so as a value (`HandGesture.NONE`) rather than by
-        omission is what lets `HandFinder` take either model without branching, and stops a
-        downstream reader from mistaking "this detector cannot tell" for "the hand did nothing".
+        This model has no gesture head. Saying so as a value, `HandGesture.NONE`, rather than by
+        omission lets `HandFinder` take either model without branching, and keeps a reader from
+        mistaking "this detector cannot tell" for "the hand did nothing".
         """
         return [
             HandObservation(
@@ -170,11 +171,10 @@ class PalmDetector:
 
     @staticmethod
     def _to_detections(result: Any, shape_hw: tuple[int, int]) -> list[PalmDetection]:
-        """Convert a MediaPipe result into `PalmDetection`s, denormalising to pixels.
+        """Convert a MediaPipe result into `PalmDetection`s, denormalising landmarks to pixels.
 
         Shared with the gesture recogniser, whose result carries the same `hand_landmarks` and
-        `handedness` fields: one conversion, so the two paths cannot drift into disagreeing about
-        what a palm centre is.
+        `handedness` fields, so the two paths cannot drift apart on what a palm centre is.
         """
         hands = getattr(result, "hand_landmarks", None) or []
         if not hands:
@@ -204,10 +204,9 @@ class PalmDetector:
     # --- Lifetime --------------------------------------------------------------------------------
 
     def close(self) -> None:
-        """Release the MediaPipe graph.
+        """Release the MediaPipe graph, whose landmarker holds native resources.
 
-        Explicit because the landmarker holds native resources. `__exit__` calls this, so a `with`
-        block releases them.
+        `__exit__` calls this, so a `with` block frees them without the caller doing anything.
         """
         closer = getattr(self._detector, "close", None)
         if callable(closer):

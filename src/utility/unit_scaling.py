@@ -15,8 +15,10 @@ SUPPORTED_DISTANCE_UNITS: dict[str, float] = {
 def unit_scaling(out: str) -> float:
     """Return the multiplier that converts millimetres into ``out``.
 
-    A pure scaling lookup. It never rounds and never changes dtype for array
-    callers that multiply by the returned factor.
+    A pure lookup in ``SUPPORTED_DISTANCE_UNITS``, keyed case-insensitively
+    after stripping whitespace and raising ``ValueError`` on anything else. It
+    never rounds and never changes dtype for array callers that multiply by the
+    returned factor.
     """
     key = str(out).strip().lower()
     try:

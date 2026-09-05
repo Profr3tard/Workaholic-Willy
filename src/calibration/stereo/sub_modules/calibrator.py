@@ -1,11 +1,11 @@
 """ChArUco-based stereo calibration.
 
 ``StereoCalibrator`` turns a folder of stereo image pairs into a
-:class:`CalibrationResult` (per-camera intrinsics, rectification rotations,
-projection matrices and the ``Q`` reprojection matrix; the remap tables are
-derived from those). A ChArUco board tolerates partial views and gives each
-corner a unique id, so corners are matched across the stereo pair by id.
-Persistence is handled by :class:`StereoCalibrationStore`.
+:class:`CalibrationResult`: per-camera intrinsics, rectification rotations,
+projection matrices and the ``Q`` reprojection matrix, from which the remap
+tables are derived. A ChArUco board tolerates partial views and gives every
+corner a unique id, so corners are matched across the pair by id.
+:class:`StereoCalibrationStore` handles persistence.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ class StereoCalibrator:
             resolve_aruco_dictionary(aruco_dict_name),
         )
         self._detector = cv.aruco.CharucoDetector(self._board)
-        # Board geometry sets the scale of every result below, so it is logged as configured.
+        # Board geometry fixes the metric scale of every result below, so it is logged.
         logger.debug(
             "ChArUco board %dx%d squares, square=%.2f mm, marker=%.2f mm, dict=%s, alpha=%.2f.",
             int(squares_x),
@@ -81,7 +81,11 @@ class StereoCalibrator:
         left_glob: str,
         right_glob: str,
     ) -> CalibrationResult:
-        """Calibrate from globbed image folders. Returns a fresh result."""
+        """Calibrate from globbed image folders. Returns a fresh result.
+
+        ``frame_size`` may be None, in which case it is taken from the first
+        usable pair.
+        """
         left_imgs = sorted(glob.glob(left_glob))
         right_imgs = sorted(glob.glob(right_glob))
 
@@ -108,7 +112,7 @@ class StereoCalibrator:
         imgpointsL: List[np.ndarray] = []
         imgpointsR: List[np.ndarray] = []
 
-        # Per-pair detection is the tight loop here, so rejects are counted and reported once.
+        # Rejected pairs are counted here and reported once after the loop.
         unusable = 0
         for left_path, right_path in zip(left_imgs, right_imgs):
             pair = self._detect_pair(left_path, right_path)
@@ -123,8 +127,8 @@ class StereoCalibrator:
             imgpointsR.append(cornersR)
 
         if unusable:
-            # Degraded, not fatal: the solve continues on whatever is left. A board half out of
-            # frame shows up as a high reject count long before the RMS looks wrong.
+            # Degraded, not fatal: the solve continues on the pairs that survived. A board
+            # half out of frame shows up as a high reject count before the RMS looks wrong.
             logger.warning(
                 "%d of %d image pairs unusable (board not found, or < %d corners shared L/R).",
                 unusable,
@@ -201,7 +205,7 @@ class StereoCalibrator:
         imgpointsL: List[np.ndarray],
         imgpointsR: List[np.ndarray],
     ) -> CalibrationResult:
-        """Run mono -> stereo -> rectify from already-matched corner correspondences."""
+        """Calibrate each camera, then the pair, then rectification, from matched corners."""
         rms_left, camL, distL, _, _ = cv.calibrateCamera(  # type: ignore[call-overload]
             objpoints, imgpointsL, frame_size, None, None
         )
@@ -236,8 +240,8 @@ class StereoCalibrator:
             alpha=self.rectify_alpha,
         )
 
-        # Reprojection RMS is in pixels, the baseline in the board's unit (mm). Logging both
-        # turns "the rig is off" into a number comparable against the last calibration.
+        # Reprojection RMS is in pixels, the baseline in the board's unit (mm). Both are
+        # logged so a drifting rig can be compared against the previous calibration.
         logger.info(
             "Reprojection RMS: left=%.3f px, right=%.3f px, stereo=%.3f px; baseline=%.1f mm.",
             float(rms_left),

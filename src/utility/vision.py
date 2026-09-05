@@ -1,8 +1,8 @@
-"""Cross-platform OpenCV colour-space helpers.
+"""OpenCV colour-space helpers.
 
 OpenCV returns BGR images while almost every ML model (Pillow, torch,
-MediaPipe, transformers) expects RGB. These one-liners exist so that call
-sites read as the intent, ``bgr_to_rgb(frame)``, rather than as an opaque
+MediaPipe, transformers) expects RGB. The wrappers name that conversion, so a
+call site reads ``bgr_to_rgb(frame)`` rather than
 ``cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)``.
 """
 

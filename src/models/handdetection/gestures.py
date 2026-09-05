@@ -1,20 +1,19 @@
 """Thumbs up / thumbs down, from MediaPipe's canned gesture classifier.
 
-The canned model is used instead of our own geometry because a thumbs-up is easy to describe and
-hard to detect: "thumb extended along the hand's up-axis, other fingers curled" also fits a hand
-holding a pen, a fist seen at an angle, and a thumb pointing at the camera. The canned classifier
-was trained on people actually doing it.
+The canned model stands in for hand-written geometry because "thumb extended along the hand's
+up-axis, other fingers curled" also describes a hand holding a pen, a fist seen at an angle, and a
+thumb pointing at the camera.
 
-What this package promises is narrower than what the classifier knows. It reports seven shapes; two
-of them are mapped and everything else goes in `OTHER`, keeping the raw label. Narrowing the
-contract here rather than at each call site means a caller cannot accidentally start depending on
-`Pointing_Up` without editing this file and reading why it was excluded.
+What this package promises is narrower than what the classifier knows. Of the seven shapes it
+reports, two are mapped and the rest become `OTHER` with the raw label kept. Narrowing here rather
+than at each call site means a caller cannot start depending on `Pointing_Up` without editing this
+file.
 
 The label spelling is not assumed. MediaPipe documents the categories as `Thumb_Up` / `Thumb_Down`,
-but this maps on a normalised form (case-folded, separators stripped), so `Thumb_Up`, `thumb up` and
-`ThumbUp` all land on the same value. The exact spelling of the bundled model has not been verified
-here, because the `.task` files are an operator download and are not present, so the normalisation
-is doing real work.
+but the mapping runs on a normalised form (case-folded, separators stripped), so `Thumb_Up`,
+`thumb up` and `ThumbUp` all land on the same value. The `.task` bundles are an operator download
+and are not present here, so the spelling a given bundle uses is unverified and the normalisation
+is what makes the mapping hold.
 """
 
 from __future__ import annotations
@@ -45,8 +44,8 @@ __all__ = ["ThumbGestureRecognizer", "normalise_gesture_label", "to_hand_gesture
 
 _SEPARATORS: Final[re.Pattern[str]] = re.compile(r"[\s_\-]+")
 
-#: Normalised MediaPipe label -> the value this package promises. Anything absent becomes `OTHER`
-#: (a recognised shape that is not acted on) as distinct from `NONE` (nothing recognised at all).
+#: Normalised MediaPipe label -> the value this package promises. A label that is absent here
+#: becomes `OTHER`, a shape recognised and not acted on, as against `NONE`, nothing recognised.
 _GESTURE_BY_LABEL: Final[dict[str, HandGesture]] = {
     "thumbup": HandGesture.THUMB_UP,
     "thumbsup": HandGesture.THUMB_UP,
@@ -54,8 +53,8 @@ _GESTURE_BY_LABEL: Final[dict[str, HandGesture]] = {
     "thumbsdown": HandGesture.THUMB_DOWN,
 }
 
-#: MediaPipe's own "no gesture" category. It arrives as a normal classification with a score, so
-#: without this it would read as a confidently recognised `OTHER`.
+#: MediaPipe's own "no gesture" categories. They arrive as ordinary classifications carrying a
+#: score, so without this set they would read as a confidently recognised `OTHER`.
 _NONE_LABELS: Final[frozenset[str]] = frozenset({"none", "unknown", ""})
 
 
@@ -75,11 +74,10 @@ def to_hand_gesture(label: str) -> HandGesture:
 class ThumbGestureRecognizer:
     """Recognise thumbs-up / thumbs-down, and return the palm centre from the same pass.
 
-    The canned bundle embeds a hand landmarker, so its result already carries `hand_landmarks`.
-    Running a separate `PalmDetector` over the same frame would load a second model and pay for the
-    same inference twice, for landmarks that are already in hand. This returns `HandObservation`s
-    that pair each gesture with the palm it came from, aligned by construction rather than by the
-    caller zipping two lists.
+    The canned bundle embeds a hand landmarker, so its result already carries `hand_landmarks`; a
+    separate `PalmDetector` over the same frame would load a second model and repeat that
+    inference. Each returned `HandObservation` pairs a gesture with the palm it came from, aligned
+    by construction rather than by the caller zipping two lists.
     """
 
     def __init__(
@@ -118,9 +116,9 @@ class ThumbGestureRecognizer:
                 min_hand_detection_confidence=float(threshold),
                 min_hand_presence_confidence=float(presence_threshold),
                 min_tracking_confidence=float(tracking_threshold),
-                # The classifier's own floor. Set alongside the `_read_gesture` check rather than
+                # The classifier's own floor, set alongside the `_read_gesture` check rather than
                 # instead of it: this one keeps low-scoring categories out of the result entirely,
-                # while that check decides `NONE` versus `OTHER` on what does come back.
+                # while that check decides `NONE` versus `OTHER` among the ones that do come back.
                 canned_gesture_classifier_options=ClassifierOptions(
                     score_threshold=float(min_gesture_confidence),
                 ),
@@ -184,8 +182,8 @@ class ThumbGestureRecognizer:
     def _read_gesture(self, categories: Any, hand_index: int) -> GestureReading:
         """Turn one hand's category list into a single reading.
 
-        Below `min_gesture_confidence` the answer is `NONE`, not a low-confidence `THUMB_UP`: a
-        confirmation gesture that fires on a 0.2 score is worse than one that does not fire.
+        A thumb label scoring below `min_gesture_confidence` is reported as `NONE` rather than as a
+        low-confidence `THUMB_UP`, so a confirmation gesture cannot fire on a weak score.
         """
         if not categories:
             return GestureReading(

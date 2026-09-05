@@ -1,8 +1,9 @@
 """Shared runtime helpers.
 
-Small helpers are imported eagerly. The torch-dependent device helpers load
-lazily, so importing :mod:`src.utility.unit_scaling` never pulls in the optional
-ML dependencies.
+The small helpers are imported eagerly. The torch-dependent ones in
+:mod:`src.utility.device` are named in ``_DEVICE_EXPORTS`` and resolved on first
+attribute access, so importing this package, or a leaf of it such as
+:mod:`src.utility.unit_scaling`, never pulls in the optional ML dependencies.
 """
 
 from __future__ import annotations

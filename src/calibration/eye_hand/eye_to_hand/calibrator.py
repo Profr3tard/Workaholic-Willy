@@ -17,7 +17,11 @@ class EyeToHandCalibrator(BaseEyeHandCalibrator):
     """Solve ``T_cam_to_base`` for a fixed camera observing the robot tool."""
 
     def calibrate(self) -> EyeHandCalibrationResult:
-        """Return a typed ``Transform(CAMERA -> BASE)`` result."""
+        """Return a typed ``Transform(CAMERA -> BASE)`` result.
+
+        Refuses with :class:`CalibrationDataError` unless the dataset holds
+        ``min_samples`` poses rotating about two independent axes.
+        """
         self._assert_ready()
         T_base_to_tool_list, T_cam_to_marker_list = self._sample_matrices()
         A_mats = HandEyeAXXB.relative_motions(T_base_to_tool_list)
@@ -38,5 +42,9 @@ class EyeToHandCalibrator(BaseEyeHandCalibrator):
         )
 
     def calibrate_extrinsics(self, *, rig_id: str) -> Extrinsics:
-        """Solve and return schema-versioned camera-to-base extrinsics."""
+        """Solve and return schema-versioned camera-to-base extrinsics.
+
+        ``rig_id`` names the camera rig the calibration belongs to and may not
+        be empty.
+        """
         return self.calibrate().to_extrinsics(rig_id=rig_id)

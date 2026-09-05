@@ -1,14 +1,13 @@
 """4x4 homogeneous matrix helpers.
 
-These exist for two reasons:
+They exist for boundary code that speaks plain ndarrays, such as eye-to-hand
+calibration and OpenCV, and for tight inner loops where one matrix multiply is
+cheaper than allocating a new :class:`Transform`. See also
+:mod:`src.geometry.conversions`.
 
-1. Bridging code that speaks plain ndarrays, such as eye-to-hand calibration
-   and OpenCV. See also :mod:`src.geometry.conversions`.
-2. Numerical efficiency in tight inner loops, where a single matrix multiply
-   is cheaper than allocating a new :class:`Transform`.
-
-For everything else prefer :class:`~src.geometry.transform.Transform`, which
-carries explicit frames and is type-checked at every step.
+Everywhere else use :class:`~src.geometry.transform.Transform`, which carries
+explicit frames and is type-checked at every step. Nothing here carries a
+frame, so frame agreement is the caller's obligation.
 """
 
 from __future__ import annotations
@@ -41,7 +40,7 @@ IDENTITY_MATRIX.setflags(write=False)
 
 
 def make_homogeneous(R: np.ndarray, t: np.ndarray) -> np.ndarray:
-    """Assemble a 4x4 transform from a 3x3 rotation and a (3,) translation."""
+    """Assemble a 4x4 transform from a 3x3 rotation and a (3,) translation in mm."""
     R = validate_rotation_matrix(R, name="R")
     t = validate_position_mm(t, name="t")
     out = np.eye(4, dtype=np.float64)
@@ -59,7 +58,7 @@ def matrix_to_position_quaternion(T: np.ndarray) -> tuple[np.ndarray, np.ndarray
 
 
 def position_quaternion_to_matrix(t: np.ndarray, q: np.ndarray) -> np.ndarray:
-    """Assemble a 4x4 transform from a (3,) translation and an XYZW quaternion."""
+    """Assemble a 4x4 transform from a (3,) translation in mm and an XYZW quaternion."""
     t_v = validate_position_mm(t, name="translation_mm")
     q_v = validate_quaternion_xyzw(q)
     R = to_rotation_matrix(q_v)
@@ -70,20 +69,24 @@ def position_quaternion_to_matrix(t: np.ndarray, q: np.ndarray) -> np.ndarray:
 
 
 def invert_homogeneous(T: np.ndarray) -> np.ndarray:
-    """Return the inverse of a 4x4 rigid transform, analytically and without a solver."""
+    """Invert a 4x4 rigid transform analytically, without a linear solver."""
     arr = validate_homogeneous_matrix(T)
     R = arr[:3, :3]
     t = arr[:3, 3]
     inv = np.eye(4, dtype=np.float64)
-    # For a rigid transform the inverse rotation is the transpose, and the
-    # inverse translation is that rotation applied to the negated translation.
+    # Validation guarantees an orthonormal rotation block, so the transpose is
+    # its inverse and no general inversion is needed.
     inv[:3, :3] = R.T
     inv[:3, 3] = -R.T @ t
     return inv
 
 
 def compose_homogeneous(A: np.ndarray, B: np.ndarray) -> np.ndarray:
-    """Return ``A @ B`` after validating both as 4x4 rigid transforms."""
+    """Return ``A @ B`` after validating both as 4x4 rigid transforms.
+
+    The frames are unchecked here: the caller answers for ``A`` ending in the
+    frame ``B`` starts from.
+    """
     a = validate_homogeneous_matrix(A, name="A")
     b = validate_homogeneous_matrix(B, name="B")
     return a @ b

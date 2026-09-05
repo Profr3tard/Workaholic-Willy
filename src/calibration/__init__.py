@@ -1,9 +1,9 @@
-"""Calibration APIs for stereo vision, eye-hand solving, and persistence.
+"""Calibration APIs for stereo vision, eye-hand solving and persistence.
 
-The package owns calibration domain logic only. Camera device I/O, robot
-vendor drivers, FastAPI routes, and application pipelines stay outside this
-boundary. OpenCV usage is isolated to the stereo subpackage; hand-eye solvers
-and typed persistence stay pure NumPy / geometry.
+Domain logic only: camera device I/O, robot vendor drivers, FastAPI routes and
+application pipelines stay outside this boundary. OpenCV stays inside the
+stereo subpackage; the hand-eye solvers and the typed persistence use NumPy and
+:mod:`src.geometry` alone.
 """
 
 from __future__ import annotations

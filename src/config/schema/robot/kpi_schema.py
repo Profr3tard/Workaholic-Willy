@@ -1,12 +1,11 @@
 """Typed schema for the locked KPI thresholds.
 
-The artefact lives at ``config/robot/kpi_thresholds.yaml``.
-Operators may override any value per-deployment without code
-changes.
+The values live in ``config/robot/kpi_thresholds.yaml`` and are
+per-deployment: an operator overrides one without a code change.
 
-All "rate" fields use the unit interval (``[0, 1]``). The
-``median_cycle_time_increase_pct_max`` is expressed as a percentage
-(``5.0`` == "+5%").
+Every rate field is on the unit interval ``[0, 1]``.
+``median_cycle_time_increase_pct_max`` is a percentage, so ``5.0``
+means "+5%".
 """
 
 from __future__ import annotations

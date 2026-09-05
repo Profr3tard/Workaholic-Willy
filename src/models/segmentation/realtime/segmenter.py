@@ -70,9 +70,9 @@ class Sam2Segmenter:
             self.model, self.device, self.optim, vision=True,
         )
 
-        # Debug images are written via :func:`debug_dir` (see
-        # ``_save_debug_overlay``), which lazily creates and rotates the
-        # output directory. Nothing to pre-create here.
+        # Debug images go through :func:`debug_dir` in ``_save_debug_overlay``,
+        # which creates and rotates the output directory on demand, so there is
+        # nothing to pre-create here.
 
     @torch.inference_mode()
     def segment_detection(
@@ -81,9 +81,9 @@ class Sam2Segmenter:
         detection: Detection,
         frame_id: str | None = None,
     ) -> SegmentationResult:
-        """
-        Convenience entry point: takes a BGR image (OpenCV) and a Detection
-        from GroundingDinoObjectDetector, converts to RGB, and runs segment().
+        """Segment one ``Detection`` from ``GroundingDinoObjectDetector``.
+
+        Takes the OpenCV BGR image, converts it to RGB and calls ``segment``.
         """
         image_rgb = bgr_to_rgb(image_bgr)
         x0, y0, x1, y1 = detection.box
@@ -105,12 +105,11 @@ class Sam2Segmenter:
         score: float = 1.0,
         frame_id: str | None = None,
     ) -> SegmentationResult:
-        """
-        Runs SAM2 segmentation for exactly one bounding box.
+        """Run SAM2 for exactly one bounding box.
 
         Parameters:
         - image_rgb: HxWx3 RGB numpy array
-        - bbox_xyxy: (x1, y1, x2, y2)
+        - bbox_xyxy: (x1, y1, x2, y2), clipped to the image bounds
         - label: object label
         - score: optional upstream detection score
         """
@@ -125,7 +124,7 @@ class Sam2Segmenter:
 
         start = time.time()
 
-        # Always CPU for processor
+        # The processor takes the box tensor on CPU.
         box_tensor = torch.tensor(clipped_box, dtype=torch.float32).view(1, 1, 4)
 
         inputs = self.processor(
@@ -197,16 +196,15 @@ class Sam2Segmenter:
         return result
 
     def _extract_first_mask(self, post_masks: Any) -> np.ndarray:
-        """
-        Extracts the first 2D mask from the SAM2 post-process output,
-        unwrapping any list, tuple or extra-dimension nesting.
+        """The first 2D mask from the SAM2 post-process output.
+
+        Unwraps any list, tuple or extra leading dimension around it.
         """
         if post_masks is None or len(post_masks) == 0:
             raise RuntimeError("SAM2 post_process_masks returned no masks.")
 
         obj = post_masks[0]
 
-        # Take the first element for as long as the value is a list or tuple.
         while isinstance(obj, (list, tuple)):
             if len(obj) == 0:
                 raise RuntimeError("Mask container is empty.")
@@ -226,10 +224,10 @@ class Sam2Segmenter:
         return arr
 
     def _postprocess_mask(self, raw_mask: np.ndarray) -> np.ndarray:
-        """
-        - threshold > 0
-        - morphology open, then close
-        - optional: keep the largest connected component
+        """Threshold above zero, then morphological open and close.
+
+        Keeps only the largest connected component when
+        ``keep_largest_component`` is set.
         """
         binary: np.ndarray = (raw_mask > 0).astype(np.uint8)
 
@@ -254,7 +252,7 @@ class Sam2Segmenter:
         if num_labels <= 1:
             return mask
 
-        # stats[0] is the background component.
+        # Row 0 of stats is the background component, hence the offset by one.
         component_areas = stats[1:, cv2.CC_STAT_AREA]
         largest_idx = int(np.argmax(component_areas)) + 1
 

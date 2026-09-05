@@ -13,13 +13,10 @@ __all__ = ["Detection"]
 class Detection:
     """Immutable detection result emitted by the zero-shot and closed-set detectors.
 
-    All numeric fields are validated in :meth:`__post_init__`:
-
-    * ``box`` must have length 4 and be in ``(x0, y0, x1, y1)`` order with
-      ``x1 > x0`` and ``y1 > y0`` and all values finite.
-    * ``x_center`` / ``y_center`` must be finite.
-    * ``score`` must lie in ``[0, 1]``.
-    * ``label`` must be a non-empty string.
+    :meth:`__post_init__` enforces the contract: ``box`` has length 4 in
+    ``(x0, y0, x1, y1)`` order with ``x1 > x0`` and ``y1 > y0``, the box corners and
+    both centers are finite, ``score`` lies in ``[0, 1]``, and ``label`` is a non-empty
+    string. A backend that cannot satisfy them cannot build a ``Detection``.
     """
 
     box: list[float]

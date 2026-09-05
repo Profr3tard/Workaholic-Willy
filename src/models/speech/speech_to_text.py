@@ -112,7 +112,7 @@ class WhisperSpeechToText:
         self.audio_buffer.extend(audio_chunk)
 
     def _drain_chunk(self) -> str | None:
-        """Transcribe one chunk from the buffer if enough samples are available."""
+        """Transcribe one chunk, or ``None`` while the buffer is short of one."""
         if len(self.audio_buffer) < self.samples_per_chunk:
             return None
         audio_np = np.array(self.audio_buffer[:self.samples_per_chunk])
@@ -126,13 +126,11 @@ class WhisperSpeechToText:
         timeout_s: float | None = 30.0,
         max_attempts: int | None = None,
     ) -> str | None:
-        """
-        Record from the microphone until one non-empty transcription is produced,
-        or until the bound (``timeout_s`` / ``max_attempts``) elapses.
+        """Record from the microphone until one non-empty transcription arrives.
 
-        Returns the transcribed text, or ``None`` if no speech was recognised
-        within the bound. The bound is what keeps silence, a mic failure or
-        persistently blank output from looping forever.
+        Returns that text, or ``None`` once the bound (``timeout_s`` or
+        ``max_attempts``) elapses. The bound is what keeps silence, a mic
+        failure or persistently blank output from looping forever.
         """
         self.audio_buffer.clear()
         with sd.RawInputStream(

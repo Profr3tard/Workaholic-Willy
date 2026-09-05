@@ -1,9 +1,10 @@
 """Universal segmentation (OneFormer): higher-accuracy instance masks, GPU-heavy.
 
-Intended for capable hardware (``segmenter_backend: oneformer``). Segments the
-whole image once, then returns the instance whose mask best overlaps the
-requested box, so it is a drop-in for :class:`Sam2Segmenter` in the perception
-seam and emits the same :class:`SegmentationResult`.
+Selected by ``segmenter_backend: oneformer`` and meant for capable hardware. It
+segments the whole image once and returns the instance whose mask overlaps the
+requested box most, emitting the same :class:`SegmentationResult` as
+:class:`Sam2Segmenter`, which makes the two interchangeable in the perception
+seam.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from src.utility import (
 
 
 class OneFormerSegmenter:
-    """OneFormer universal segmenter: higher-accuracy instance masks than SAM2 but heavier."""
+    """One universal-segmentation pass over the image, then the instance that matches the box."""
 
     def __init__(
         self,
@@ -79,7 +80,7 @@ class OneFormerSegmenter:
     def segment_detection(
         self, image_bgr: np.ndarray, detection: Detection, frame_id: str | None = None
     ) -> SegmentationResult:
-        """Convenience entry point mirroring :meth:`Sam2Segmenter.segment_detection`."""
+        """BGR entry point, mirroring :meth:`Sam2Segmenter.segment_detection`."""
         image_rgb = bgr_to_rgb(image_bgr)
         x0, y0, x1, y1 = detection.box
         return self.segment(
@@ -135,7 +136,7 @@ class OneFormerSegmenter:
 
     @staticmethod
     def _pick_segment_in_box(seg_map: np.ndarray, segments: list, box: tuple[int, int, int, int]) -> np.ndarray:
-        """The instance segment covering the most of ``box`` (fallback: the box itself)."""
+        """The instance segment covering most of ``box``, or the box rectangle if none overlaps it."""
         x1, y1, x2, y2 = box
         box_area = max(1, (x2 - x1) * (y2 - y1))
         best_mask: np.ndarray | None = None

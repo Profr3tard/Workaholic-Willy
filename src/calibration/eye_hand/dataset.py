@@ -1,4 +1,9 @@
-"""Eye-hand sample dataset and deterministic JSON persistence."""
+"""Eye-hand sample dataset and deterministic JSON persistence.
+
+Payloads are written with sorted keys through a temporary file that is renamed
+over the target, so the same samples produce the same bytes and a failed write
+leaves the previous file intact.
+"""
 
 from __future__ import annotations
 
@@ -37,7 +42,11 @@ def _as_valid_transform(value: object, *, name: str) -> np.ndarray:
 
 @dataclass(frozen=True, slots=True)
 class EyeHandSample:
-    """One paired robot pose and marker pose measurement."""
+    """One capture: a robot pose paired with the marker pose seen at it.
+
+    ``T_base_to_tool`` and ``T_cam_to_marker`` are validated as homogeneous
+    transforms and stored read-only.
+    """
 
     T_base_to_tool: np.ndarray
     T_cam_to_marker: np.ndarray
@@ -77,7 +86,11 @@ class EyeHandSample:
 
 
 class EyeHandDataset:
-    """Container for ordered eye-hand calibration samples."""
+    """Ordered container for eye-hand calibration samples.
+
+    Order is load-bearing: both calibrators pair consecutive samples into
+    relative motions, so samples stay in capture order.
+    """
 
     def __init__(self, samples: list[EyeHandSample] | None = None) -> None:
         self._samples: list[EyeHandSample] = list(samples or [])
@@ -118,8 +131,8 @@ class EyeHandDataset:
         tmp = target.with_suffix(target.suffix + ".tmp")
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         tmp.replace(target)
-        # Path and size: a dataset that silently captured 0 samples is the failure mode
-        # this line is here to make obvious afterwards.
+        # Size as well as path: a dataset that captured no samples looks like a
+        # successful run everywhere except in this line.
         logger.info(
             "Dataset written: %s (%d samples, %d bytes).",
             target,

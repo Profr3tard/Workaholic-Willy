@@ -1,12 +1,11 @@
-"""The VLM grounding route: a vision-language model used as a detector, then SAM2 for masks.
+"""The VLM grounding route: a vision-language model used as the detector, then SAM2 for masks.
 
     from src.models.vlm import Qwen3VLGrounder
     from src.models.perception_backend import TwoStageBackend
 
     backend = TwoStageBackend(detector=Qwen3VLGrounder(model_id=...), segmenter=sam2)
 
-Nothing here imports torch or transformers at module scope.
-See [vlm_README.md](vlm_README.md).
+Nothing here imports torch or transformers at module scope. See [vlm_README.md](vlm_README.md).
 """
 
 from __future__ import annotations

@@ -121,9 +121,9 @@ class SingleDeviceRigConfig(BaseRigConfig):
 class RealSensePostProcessingConfig(StrictModel):
     """Depth post-processing filter chain for the RealSense backend.
 
-    Applied to each depth frame in librealsense's recommended order (decimation -> spatial ->
-    temporal -> hole-filling). Every filter is a no-op when disabled, so the defaults leave the raw
-    device depth untouched apart from the spatial and temporal smoothing RealSense recommends.
+    Each depth frame passes the enabled filters in librealsense's recommended order: decimation,
+    spatial, temporal, hole-filling. A disabled filter is a no-op, so the defaults deliver raw
+    device depth apart from the spatial and temporal smoothing RealSense recommends.
     """
 
     decimation: bool = False
@@ -137,9 +137,9 @@ class RealSensePostProcessingConfig(StrictModel):
 class RealSenseConfig(StrictModel):
     """Intel RealSense (pyrealsense2) device tuning.
 
-    Consumed only when ``rgbd_backend == "realsense"`` and ignored by the generic OpenCV backend.
-    Every field has a working default so the driver streams out of the box on a connected device;
-    ``None`` means "leave the device/SDK default in place".
+    Read only when ``rgbd_backend == "realsense"``; the generic OpenCV backend ignores it. Every
+    field carries a working default, so the driver streams from a connected device without further
+    configuration, and ``None`` leaves the device or SDK default in place.
     """
 
     enable_emitter: bool = True
@@ -164,9 +164,9 @@ class RGBDDeviceRigConfig(BaseRigConfig):
     depth_resolution: tuple[int, int] = (1280, 720)
     align_depth_to_color: bool = True
 
-    # Driver backend: "opencv" (generic VideoCapture/OpenNI, no vendor SDK) or
-    # "realsense" (pyrealsense2, native aligned depth). Default keeps the
-    # generic path; the RealSense knobs below apply only to the latter.
+    # Driver backend: "opencv" is generic VideoCapture/OpenNI and needs no vendor SDK, "realsense"
+    # is pyrealsense2 with native aligned depth. The default is the generic path, and the
+    # ``realsense`` block below is read only by the RealSense backend.
     rgbd_backend: Literal["opencv", "realsense"] = "opencv"
     realsense: RealSenseConfig = Field(default_factory=RealSenseConfig)
 
@@ -220,13 +220,14 @@ class CameraSystemConfig(StrictModel):
             if not active.enabled:
                 raise ValueError(f"active_rig_id {self.active_rig_id!r} is disabled")
 
-        # More than one enabled RGB-D rig means two or more physical cameras on one bus, and the
-        # serial number is the only stable way to say which is which. `RealSenseRGBDStreamer` binds
-        # a device with `rs_config.enable_device(self.serial)` and, with no serial, takes whatever
-        # the SDK offers first, an order that is not stable across boots or replugs. Two identical
-        # D435s that swap identity do not fail: they produce a complete, plausible scene with left
-        # and right exchanged, so every fused position is mirrored about the rig axis and the pick
-        # goes confidently to the wrong place.
+        # Two or more enabled RGB-D rigs are two or more physical cameras on one bus, and the serial
+        # number is the only stable way to tell them apart. `RealSenseRGBDStreamer` binds a device
+        # with `rs_config.enable_device(self.serial)`, and with no serial it takes whatever the SDK
+        # offers first, an order that survives neither a reboot nor a replug. Two identical D435s
+        # that swap identity do not fail: they produce a complete, plausible scene with left and
+        # right exchanged, so every fused position is mirrored about the rig axis. No shipped
+        # profile enables two RGB-D rigs at once: `cam.tiltcam.yaml` carries the two-rig case
+        # disabled with `serial_number: null`, so this refusal does not fire on the shipped tree.
         rgbd = [r for r in self.rigs if getattr(r, "source", None) == "rgbd" and r.enabled]
         if len(rgbd) > 1:
             missing = [r.rig_id for r in rgbd if not getattr(r, "serial_number", None)]
@@ -255,8 +256,8 @@ class CameraSystemConfig(StrictModel):
 class WlsFilterConfig(StrictModel):
     """Optional WLS (Weighted Least Squares) post-filter for SGBM disparity.
 
-    Smooths disparity in low-texture regions while preserving edges. Requires
-    ``opencv-contrib-python``, which provides ``cv2.ximgproc``.
+    Smooths disparity in low-texture regions while preserving edges. Needs ``cv2.ximgproc``, which
+    ships with ``opencv-contrib-python``.
     """
 
     enabled: bool = False
@@ -268,10 +269,9 @@ class WlsFilterConfig(StrictModel):
 class StereoMatcherConfig(StrictModel):
     """SGBM disparity parameters plus optional post-processing knobs.
 
-    Field names use ``camelCase`` aliases so that YAML files can keep the
-    OpenCV-native spelling (``numDisparities``, ``blockSize``, ...). Python
-    code accesses the fields via their snake_case attribute names
-    (``num_disparities``, ``block_size``, ...).
+    YAML keeps the OpenCV-native spelling through ``camelCase`` aliases (``numDisparities``,
+    ``blockSize``); Python reaches the same fields under their snake_case attribute names
+    (``num_disparities``, ``block_size``).
     """
 
     min_disparity: int = Field(alias="minDisparity")
@@ -279,17 +279,17 @@ class StereoMatcherConfig(StrictModel):
     block_size: int = Field(alias="blockSize")
     p1: int | None = Field(default=None, ge=0)
     p2: int | None = Field(default=None, ge=0)
-    #: Percent by which the best match must beat the runner-up before it is trusted. Higher gives
-    #: fewer wrong depths on textureless surfaces and more holes where nothing wins clearly.
+    #: Percent by which the best match must beat the runner-up before it is trusted. Raising it
+    #: trades wrong depths on textureless surfaces for holes where nothing wins clearly.
     uniqueness_ratio: int = Field(alias="uniquenessRatio", ge=0)
     #: Largest blob of similar disparity still treated as noise and cleared. A speck at the wrong
-    #: depth is worse than a hole, because a grasp can be planned onto it. ``0`` disables the filter.
+    #: depth is worse than a hole, because a grasp can be planned onto it. ``0`` disables it.
     speckle_window_size: int = Field(alias="speckleWindowSize", ge=0)
-    #: How much disparity may vary inside one blob before it counts as a separate surface rather than
-    #: one speckle. Read together with ``speckle_window_size``; alone it does nothing.
+    #: Disparity spread allowed inside one blob before it reads as a separate surface rather than
+    #: one speckle. It acts only through ``speckle_window_size``; on its own it changes nothing.
     speckle_range: int = Field(alias="speckleRange", ge=0)
-    #: Tolerance (px) of the left-right consistency check: a pixel is kept only if matching
-    #: left-to-right and right-to-left agree within this. Guards against occlusion-edge depths, which
+    #: Tolerance (px) of the left-right consistency check: a pixel survives only if matching
+    #: left-to-right and right-to-left agree within it. Guards against occlusion-edge depths, which
     #: are exactly the depths a grasp planner would otherwise aim at. ``-1`` disables the check.
     disp12_max_diff: int = Field(alias="disp12MaxDiff")
 
@@ -303,7 +303,7 @@ class StereoMatcherConfig(StrictModel):
         description=(
             "Exponential moving average for disparity in realtime mode. "
             "0 = disabled (default), 1 = no smoothing (always latest), "
-            "0<alpha<1 weights the previous frame by (1-alpha)."
+            "0<α<1 weights the previous frame by (1-α)."
         ),
     )
     wls: WlsFilterConfig = Field(default_factory=WlsFilterConfig)  # type: ignore[arg-type]

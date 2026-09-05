@@ -18,6 +18,16 @@ if TYPE_CHECKING:  # pragma: no cover (typing only)
 __all__ = ["StereoCam3D"]
 
 class StereoCam3D:
+    """Facade over one or more calibrated stereo rigs, addressed by index.
+
+    Builds a `StereoRigRunTime` per configuration through `StereoRigFactory` and
+    forwards each call to the rig named by `rig`, which defaults to the first one.
+    All rigs share the frame size, board geometry and matcher settings of the one
+    `CalibrationConfig`. `marker_length_mm` overrides it for marker pose estimation
+    only; `aruco_dict_name` overrides the dictionary for pose estimation and for the
+    ChArUco calibration alike.
+    """
+
     def __init__(
         self,
         rigs: Sequence[StereoRigConfig],
@@ -56,6 +66,7 @@ class StereoCam3D:
         )
 
     def _rig(self, rig: int):
+        """Returns the runtime at index `rig`. A bool is not an index here."""
         if not isinstance(rig, int) or isinstance(rig, bool):
             raise IndexError(f"rig index must be an integer, got {type(rig).__name__}")
         if rig < 0 or rig >= len(self.rigs):
@@ -88,6 +99,12 @@ class StereoCam3D:
         return self._rig(rig).transform_cam_to_base(point_cam)
 
     def estimate_marker_pose_left(self, rect_left_bgr, target_id: Optional[int] = None, rig=0):
+        """Estimates T_cam_to_marker in the rig's rectified left frame.
+
+        The frame must already be rectified: the rig's rectified intrinsics are used
+        with zero distortion. With `target_id`, one 4x4 matrix or None; without it, a
+        dict of every detected marker id.
+        """
         runtime = self._rig(rig)
         K_rect = runtime.calib_result.K_rect
         dist_rect = np.zeros(5)  # rectified images have zero distortion

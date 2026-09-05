@@ -5,8 +5,8 @@ A band maps a scalar error metric (RMSE) onto one of five labels:
 
     ``excellent`` < ``good`` < ``marginal`` < ``poor``  (+ ``unknown``)
 
-Bands are vendor-neutral. Each callsite chooses the appropriate
-:class:`QualityBands` subclass, and the two are not the same kind of number:
+Bands are vendor-neutral. A callsite picks :class:`QualityBandsMm` or
+:class:`QualityBandsPx`, and the two grade different kinds of number:
 
 * stereo intrinsics report a genuine reprojection RMSE, in pixels.
 * the hand-eye routines report ``HandEyeAXXB._residual_rmse``, the mean
@@ -18,12 +18,12 @@ Bands are vendor-neutral. Each callsite chooses the appropriate
   ``|t_X| = 1096 mm``, a 1-degree rotation error scores 7-12x worse than a
   1 mm translation error.
 
-The bands therefore classify consistency: whether the solve agrees with
-itself, not how far off the camera is.
+A band therefore grades consistency: whether a solve agrees with itself, not
+how far off the camera is.
 
-The dataclasses are immutable so they can be shared across threads.
-``__post_init__`` enforces strict monotonicity, the only guarantee callers
-rely on when classifying.
+The dataclasses are frozen and shareable across threads. ``__post_init__``
+enforces strict monotonicity, the one property :func:`classify_rmse` relies
+on when it walks the thresholds in order.
 """
 
 from __future__ import annotations
@@ -101,8 +101,10 @@ def classify_rmse(
 ) -> QualityLabel:
     """Map an RMSE value onto a :data:`QualityLabel`.
 
-    ``None``, non-finite and negative inputs map to ``"unknown"``; a negative
-    value would otherwise classify as ``"excellent"``.
+    ``None`` and non-finite inputs map to ``"unknown"``, and so do negative
+    ones: without that guard a negative value would classify as
+    ``"excellent"``. Comparisons are inclusive, so a value sitting exactly on
+    a threshold takes the better label.
     """
     if value is None:
         return "unknown"

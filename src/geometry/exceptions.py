@@ -1,7 +1,7 @@
 """Exceptions raised by the :mod:`src.geometry` package.
 
-All public errors derive from :class:`GeometryError`, so a caller can catch the
-whole subsystem with a single ``except GeometryError`` clause.
+Every public error derives from :class:`GeometryError`, so one
+``except GeometryError`` clause catches the whole subsystem.
 """
 
 from __future__ import annotations
@@ -16,19 +16,27 @@ class InvalidQuaternionError(GeometryError):
 
 
 class InvalidPoseError(GeometryError):
-    """A :class:`~src.geometry.pose.Pose` failed validation."""
+    """A :class:`~src.geometry.pose.Pose` failed validation.
+
+    :mod:`src.geometry.validation` also raises it for a malformed vector at
+    the layer below, where no more specific type applies.
+    """
 
 
 class InvalidTransformError(GeometryError):
-    """A :class:`~src.geometry.transform.Transform` failed validation."""
+    """A :class:`~src.geometry.transform.Transform` failed validation.
+
+    ``compose`` and ``apply_pose`` also raise it when the frames do not join.
+    """
 
 
 class FrameMismatchError(GeometryError):
     """A geometric operation was attempted across incompatible frames.
 
-    Raised when composing two transforms whose middle frame does not match, or
-    when applying a transform to a pose that does not live in the transform's
-    ``from_frame``.
+    Comparing two poses that do not share a frame raises it. The transform
+    side of the same problem, composing across a mismatched middle frame or
+    applying a transform to a pose outside its ``from_frame``, raises
+    :class:`InvalidTransformError` instead.
     """
 
 

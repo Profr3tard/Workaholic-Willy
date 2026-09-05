@@ -13,8 +13,8 @@ from .._base import StrictModel
 class RobotCalibrationQualityBandsMm(StrictModel):
     """RMSE thresholds (mm) that classify a hand-eye calibration result.
 
-    Boundaries are inclusive upper bounds, so a value of exactly
-    ``good`` falls into the "good" band, not "marginal".
+    Each boundary is an inclusive upper bound: an RMSE of exactly ``good``
+    lands in the "good" band, not in "marginal".
     """
 
     excellent: float = Field(default=1.0, gt=0.0)
@@ -34,11 +34,11 @@ class RobotCalibrationQualityBandsMm(StrictModel):
 class RobotCalibrationConfig(StrictModel):
     """Tunable parameters for the hand-eye calibration routine.
 
-    Two keys this block does not offer:
+    Two keys this block deliberately does not offer:
 
-    * ``quality_threshold_mm``, an auto-apply gate on the RMSE that would hold a result above it
-      for operator review. No such gate exists: ``save_extrinsics`` writes whatever it is given,
-      judging the RMSE is the operator's job, and :data:`quality_bands_mm` labels it.
+    * ``quality_threshold_mm``, an auto-apply gate that would hold an RMSE above it for operator
+      review. No such gate exists anywhere: ``save_extrinsics`` writes whatever it is given,
+      judging the RMSE is the operator's job, and :data:`quality_bands_mm` is what labels it.
     * ``speed_scale``, an arm-speed scale for the duration of the routine. There is no speed
       governor; ``robot.motion_limits`` is what the driver layer enforces, and the routine takes
       a ``motion_limits=`` argument.
@@ -57,34 +57,34 @@ class RobotCalibrationConfig(StrictModel):
     max_attempts_per_pose: int = Field(default=200, ge=1)
 
     #: ETH pose-generator z band per marker source (``"ground_truth"`` / ``"aruco"``), as ``(lo, hi)``
-    #: fractions of ``workspace_limits.z_max``. An absent key keeps that source's shipped default
-    #: (ground truth: the full box; ArUco: 0.55-0.75, the band that holds the tool marker inside the
-    #: narrow overhead FOV).
+    #: fractions of ``workspace_limits.z_max``. Defaults to None, and an absent key keeps that
+    #: source's shipped band: the full box for ground truth, 0.55-0.75 for ArUco, which is what holds
+    #: the tool marker inside the narrow overhead FOV.
     #:
-    #: Keyed by source because the two sources want opposite bands, so a single value fixes one and
-    #: breaks the other. On a UR3e, ArUco collects 11/22 samples at 0.55-0.75 (rmse 6.44 mm) and 1/22
-    #: at 0.5-0.9 (21 status=timeout), while ground truth collects 9/22 at 0.5-0.9 (rmse 0.0000 mm)
-    #: and 4/22 on the full box (16 status=timeout), too few to solve. A UR5e needs neither band: it
-    #: collects 17/22 on the full box and solves exactly, so the default is None and a cell that sets
-    #: no key keeps the shipped behaviour.
+    #: Keyed by source because the two want opposite bands, so one value fixes one and breaks the
+    #: other. On a UR3e, ArUco collects 11/22 samples at 0.55-0.75 (rmse 6.44 mm) against 1/22 at
+    #: 0.5-0.9 (21 status=timeout); ground truth collects 9/22 at 0.5-0.9 (rmse 0.0000 mm) against
+    #: 4/22 on the full box (16 status=timeout, too few to solve). A UR5e needs neither band: 17/22
+    #: on the full box, solved exactly.
     #:
     #: The pose box is the sampler's range, not a filter: moving one bound re-draws every pose, so a
     #: narrower band is not a safer band. ``run_eth_calibrate --z-frac LO,HI`` overrides it for a
-    #: one-off experiment.
+    #: single run.
     pose_box_z_frac: dict[str, tuple[float, float]] | None = None
 
-    #: The only marker sources a pose box can be keyed by: the same fixed set ``run_eth_calibrate``
-    #: offers as ``--marker`` choices. Kept next to the field so the two cannot drift apart silently.
+    #: The only marker sources a pose box may be keyed by, and the same fixed set that
+    #: ``run_eth_calibrate`` offers as ``--marker`` choices. Held next to the field so the two cannot
+    #: drift apart unnoticed.
     MARKER_SOURCES: ClassVar[tuple[str, ...]] = ("ground_truth", "aruco")
 
     @model_validator(mode="after")
     def _check_pose_box_z_frac(self) -> "RobotCalibrationConfig":
-        """Refuse the three ways this field can be silently wrong.
+        """Refuse the three ways this field can be wrong without saying so.
 
-        Unchecked, a typo'd key, an inverted band and out-of-range fractions are all accepted. A
-        typo'd key is the silent one: ``{"typo_source": [0.5, 0.9]}`` validates, the runner's
-        ``.get(marker)`` then returns ``None``, the shipped default applies, and the operator's
-        setting is gone without a word.
+        Unchecked, a misspelled key, an inverted band and out-of-range fractions all validate. The
+        misspelled key is the quiet one: ``{"typo_source": [0.5, 0.9]}`` passes, the runner's
+        ``.get(marker)`` returns ``None``, the shipped default applies, and the operator's setting
+        is gone without a word.
         """
         if self.pose_box_z_frac is None:
             return self
@@ -104,8 +104,9 @@ class RobotCalibrationConfig(StrictModel):
                 )
         return self
 
-    #: Structurally identical to :class:`src.calibration.quality.QualityBandsMm`; the config layer
-    #: redeclares it rather than importing it, because config must not depend on the source tree.
+    #: Structurally identical to :class:`src.calibration.quality.QualityBandsMm`. The config layer
+    #: redeclares it rather than importing it: config sits below the source tree and must not
+    #: depend on it.
     quality_bands_mm: RobotCalibrationQualityBandsMm = Field(
         default_factory=RobotCalibrationQualityBandsMm
     )

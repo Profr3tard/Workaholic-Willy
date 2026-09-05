@@ -1,8 +1,7 @@
 """The MediaPipe hand-landmark layout, and the palm centre computed from it.
 
-Pure geometry: no MediaPipe import, no camera, no config. That is deliberate. The palm centre is the
-one piece of this package that can be exercised exhaustively without a model file or a hand, and
-keeping it importable on its own is what makes that possible.
+Pure geometry: no MediaPipe import, no camera, no config, so the palm centre can be computed and
+checked without a model file, a camera or a hand.
 """
 
 from __future__ import annotations
@@ -23,9 +22,8 @@ __all__ = [
 class HandLandmark(IntEnum):
     """MediaPipe's 21-point hand-landmark layout, by name.
 
-    `IntEnum` rather than `StrEnum` because these are indices into the result list: the value has
-    to stay usable as a subscript. Naming them removes the class of bug where `landmarks[17]` is
-    read as "some finger" by the next person and quietly changed.
+    `IntEnum` rather than `StrEnum`: the values are positions in the result list and have to stay
+    usable as a subscript. The names keep `landmarks[17]` from being read as some other finger.
     """
 
     WRIST = 0
@@ -54,12 +52,11 @@ class HandLandmark(IntEnum):
 #: The landmarks averaged into the palm centre: the wrist, the four finger knuckles, and the base of
 #: the thumb.
 #:
-#: The wrist and the four MCP joints bound the palm; `THUMB_CMC` is the base of the thumb,
-#: anatomically the thenar side of the palm, and including it pulls the centroid a little toward the
-#: thumb. The commoner published definition uses the five without it. Both are defensible and the
-#: difference is small; this set is kept for continuity with the positions this package already
-#: reports, and changing it would move every 3-D hand position in a way nothing here has measured
-#: against a real hand. Do not change it without a measurement, and if you do, say which one.
+#: The wrist and the four MCP joints bound the palm. `THUMB_CMC` is the base of the thumb, on the
+#: thenar side of the palm, and including it pulls the centroid a little toward the thumb; the
+#: commoner published definition uses the five without it. This set has never been measured against
+#: a real hand, and changing it moves every 3-D position this package reports, so change it only
+#: with a measurement, and name that measurement.
 PALM_LANDMARKS: Final[tuple[HandLandmark, ...]] = (
     HandLandmark.WRIST,
     HandLandmark.INDEX_MCP,
@@ -69,8 +66,8 @@ PALM_LANDMARKS: Final[tuple[HandLandmark, ...]] = (
     HandLandmark.THUMB_CMC,
 )
 
-#: How many landmarks MediaPipe returns per hand. A result with any other count is not a hand this
-#: package can interpret, and is rejected rather than indexed into.
+#: How many landmarks MediaPipe returns per hand. Any other count is not a hand this package can
+#: interpret, and is rejected rather than indexed into.
 LANDMARK_COUNT: Final[int] = 21
 
 
@@ -79,8 +76,8 @@ def calculate_palm_center(
 ) -> tuple[float, float]:
     """Return the mean `(x, y)` of the six palm landmarks, in the units the landmarks are in.
 
-    Raises `ValueError` on anything that is not a full 21-point hand. The alternative is an
-    `IndexError` from deep inside the averaging, several frames after the real problem.
+    Raises `ValueError` on anything that is not a full 21-point hand, so a short result fails at the
+    boundary instead of as an `IndexError` inside the averaging, frames later.
     """
     if len(landmarks) != LANDMARK_COUNT:
         raise ValueError(
@@ -102,8 +99,8 @@ def draw_hand_landmarks(
 ) -> np.ndarray:
     """Draw the landmarks and the palm centre onto a copy of a BGR image.
 
-    `cv2` is imported lazily: this module is otherwise numpy-only, and the geometry above stays
-    usable without pulling OpenCV in.
+    `cv2` is imported inside the function so that the module stays numpy-only and the geometry above
+    remains usable without OpenCV.
     """
     import cv2 as cv
 

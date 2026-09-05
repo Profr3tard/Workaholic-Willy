@@ -10,10 +10,10 @@ from .._base import StrictModel
 class DummyConfig(StrictModel):
     """Settings for the in-process dummy driver.
 
-    No knobs: the dummy driver is intentionally featureless
-    and exists so the rest of the stack can be exercised without any
-    hardware or simulator. Declared as a class (rather than ``None``)
-    so future fields can be added without breaking the YAML shape.
+    It carries no fields: the dummy driver is featureless by intent, so
+    that the rest of the stack can be exercised with neither hardware nor
+    a simulator. It is a class rather than ``None`` so a field can be
+    added later without changing the shape of the YAML.
     """
 
     pass

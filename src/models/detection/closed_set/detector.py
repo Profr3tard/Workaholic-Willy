@@ -26,20 +26,19 @@ from src.utility import (
 )
 
 
-#: Longest prompt (in words) still plausible as a class name. Two covers every COCO label and most
-#: fine-tuned vocabularies ("traffic light", "cell phone"); three words is already a description.
+#: Longest prompt, in words, still plausible as a class name. Two covers every COCO label and
+#: most fine-tuned vocabularies ("traffic light", "cell phone"); three is a description.
 _MAX_CLASS_NAME_WORDS = 2
 
 
 class RtDetrObjectDetector:
-    """RT-DETR object detector: a fixed class set (e.g. COCO), no text prompt.
+    """RT-DETR detector over a fixed class set, for example COCO, with no text prompt.
 
-    Runs the model's own label vocabulary over the whole image, so the system can
-    perceive objects without a prompt. Emits the same :class:`Detection` type as
-    the zero-shot GroundingDINO backend, so it is a drop-in alternative. The
-    optional ``prompt`` (passed positionally by the perception seam) is used only
-    as a case-insensitive class-name filter; ``None`` returns every class above
-    threshold.
+    Runs the model's own label vocabulary over the whole image, so a scene can be
+    perceived without a prompt, and emits the same :class:`Detection` type as the
+    zero-shot GroundingDINO backend, so the two are interchangeable. The optional
+    ``prompt``, passed positionally by the perception seam, is only a case-insensitive
+    class-name filter; ``None`` returns every class above threshold.
     """
 
     def __init__(self, config: ObjectDetectorConfig, debug_images: bool = False) -> None:
@@ -84,14 +83,14 @@ class RtDetrObjectDetector:
     def _class_filter(self, prompt: str | None) -> str | None:
         """``prompt`` as a class-name filter, or a refusal when it is plainly not a class name.
 
-        RT-DETR is closed-set: it has no text encoder, so the prompt never reaches the model and can
-        only be matched against the trained class list afterwards. A free-text prompt such as "the
-        small green cylindrical part" matches no class name, so the substring filter would remove
-        every detection and hand the caller an empty list indistinguishable from an empty scene.
-        Raising says "this detector cannot answer that question" rather than "there is nothing there".
+        RT-DETR has no text encoder, so the prompt never reaches the model and can only be matched
+        against the trained class list afterwards. Free text such as "the small green cylindrical
+        part" matches no class name, and silently filtering on it would return an empty list that a
+        caller cannot tell apart from an empty scene. Raising instead reports that this detector
+        cannot answer the question, not that there is nothing there.
 
-        The test is deliberately crude because the distinction is crude: a class name is one or two
-        words, and anything longer is prose aimed at a detector that never reads it.
+        The test is deliberately crude: a class name is one or two words, and anything longer is
+        prose aimed at a detector that never reads it.
         """
         if prompt is None or not prompt.strip():
             return None
@@ -109,10 +108,10 @@ class RtDetrObjectDetector:
 
     @torch.inference_mode()
     def detect_all(self, image: np.ndarray, prompt: str | None = None) -> list[Detection]:
-        """Every detection above threshold. ``prompt`` (optional) filters by class name.
+        """Every detection above threshold, filtered by class name when ``prompt`` is given.
 
-        Raises ``ValueError`` when ``prompt`` is free text rather than a class name, instead of
-        returning nothing; see :meth:`_class_filter`.
+        Raises ``ValueError`` rather than returning nothing when ``prompt`` is free text instead
+        of a class name; see :meth:`_class_filter`. Boxes are in pixels of the input image.
         """
         if image is None or image.size == 0:
             raise ValueError("Input image is empty or None.")

@@ -1,13 +1,13 @@
 """Shared base classes and validators for every config schema.
 
-All configuration models inherit from :class:`StrictModel`, which enforces
-two project-wide invariants:
+Every configuration model inherits :class:`StrictModel`, which carries two
+invariants across the whole tree:
 
-* ``extra="forbid"``: typos in YAML files are rejected at load time
-  instead of being silently ignored.
-* ``frozen=True``: config objects are immutable after construction.
-  This prevents accidental cross-component mutation; configs are
-  constructed once at startup and treated as values, not state.
+* ``extra="forbid"``: a typo in a YAML file is refused at load time rather
+  than ignored without comment.
+* ``frozen=True``: a config object is immutable once constructed, so no
+  component can mutate what another one reads. Configs are built once at
+  startup and treated as values, not as state.
 
 Use :class:`StrictModel` for every new config class.
 """
@@ -22,9 +22,9 @@ from pydantic import BaseModel, ConfigDict
 class StrictModel(BaseModel):
     """Base class for every configuration schema in this package.
 
-    See module docstring for the rationale behind ``extra="forbid"`` and
-    ``frozen=True``. Subclasses can opt out individually by overriding
-    ``model_config``, but should justify the decision in a comment.
+    Carries the ``extra="forbid"`` and ``frozen=True`` invariants the module
+    docstring describes. A subclass may opt out of either by overriding
+    ``model_config``, and must state in a comment why.
     """
 
     model_config = ConfigDict(
@@ -39,9 +39,9 @@ class StrictModel(BaseModel):
 # Reusable validators
 # ---------------------------------------------------------------------------
 
-# Known OpenCV ArUco dictionary names, listed here rather than read from
-# ``cv2.aruco`` so that schema validation does not require OpenCV to be
-# importable during config introspection such as doc generation.
+# Known OpenCV ArUco dictionary names, held here rather than read from
+# ``cv2.aruco``, so that validating a schema does not need OpenCV to be
+# importable. Config introspection such as doc generation runs without it.
 _ARUCO_DICT_NAMES: frozenset[str] = frozenset(
     {
         # Standard
@@ -62,9 +62,9 @@ _ARUCO_DICT_NAMES: frozenset[str] = frozenset(
 def validate_aruco_dict_name(value: Any) -> str:
     """Validate that ``value`` names a known OpenCV ArUco dictionary.
 
-    Used as an ``AfterValidator`` on string fields holding ArUco dict names.
-    Accepts only the exact upper-case names recognised by
-    ``cv2.aruco.getPredefinedDictionary`` in OpenCV >= 4.7.
+    Used as an ``AfterValidator`` on the string fields that hold a dictionary
+    name. Only the exact upper-case names recognised by
+    ``cv2.aruco.getPredefinedDictionary`` in OpenCV >= 4.7 are accepted.
     """
     if not isinstance(value, str):
         raise TypeError(f"aruco_dict_name must be a string, got {type(value).__name__}")

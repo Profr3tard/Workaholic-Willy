@@ -1,17 +1,17 @@
-"""Where did this config value come from: which file, which line, which profile layer?
+"""The file, line and profile layer a merged config value came from.
 
-The loader reads up to a dozen YAML files, deep-merges a chain of profile overlays onto each, and hands
-back plain Python values. That merge is lossless about values and total about origin: ``_deep_merge``
-returns ``42`` with no memory of which of four files said ``42``. Under a chain such as
-``WILLY_PROFILE=sim,ur3e,tiltcam`` the merged values alone cannot say which layer set a key; without
-this module a schema error names only the data directory, and the reader has to guess the file inside
-it. ``loader.py`` uses ``index_origins`` to name the file, line and layer per offending key.
+The loader reads up to a dozen YAML files, deep-merges a chain of profile overlays onto each and
+hands back plain Python values. That merge keeps the values and drops their origin: ``_deep_merge``
+returns ``42`` with no record of which of four files said ``42``. Under a chain such as
+``WILLY_PROFILE=sim,ur3e,tiltcam`` the merged values alone cannot say which layer set a key, and a
+schema error can name only the data directory. ``loader.py`` calls ``index_origins`` to name the
+file, line and layer of each offending key instead.
 
-This module is that memory. It is a side-car: a second, read-only walk over the same files the loader
-walks, recording a line mark per leaf. It never participates in the merge, so a bug here cannot change a
-single loaded value; the worst it can do is fail to explain one.
+This module is that record, and it is a side-car: a second, read-only walk over the same files the
+loader walks, storing a line mark per leaf. It never takes part in the merge, so a bug here cannot
+change a loaded value; the worst it can do is fail to explain one.
 
-Stdlib-only (``yaml.compose()`` yields ``start_mark.line`` for every node, so no ``ruamel.yaml``
+Stdlib only (``yaml.compose()`` yields ``start_mark.line`` for every node, so no ``ruamel.yaml``
 dependency at the bottom of the dependency stack), and it imports nothing from the robot runtime.
 """
 
@@ -41,7 +41,7 @@ class Origin:
     key: str           #: the leaf's own name (not the dotted path)
 
     def location(self, relative_to: Path | None = None) -> str:
-        """``path:line  [layer: x]``. Relative when a root is given, so the message stays readable."""
+        """``path:line  [layer: x]``, made relative to a given root so the message stays readable."""
         path: Path | str = self.file
         if relative_to is not None:
             try:
@@ -55,9 +55,9 @@ class Origin:
 def section_sources(root: Path) -> list[tuple[Path, str, str]]:
     """``(base_file, top_level_yaml_key, dotted AppConfig prefix)`` for every section the loader reads.
 
-    Mirrors ``loader._load_cached``: a file the loader does not read cannot explain anything, and a
-    file it reads that is missing here leaves a key unexplained. Kept as one table so the two can be
-    compared by eye.
+    Keep this table in step with ``loader._load_cached``: a file the loader does not read cannot
+    explain anything, and a file it reads that is missing here leaves a key unexplained. One table
+    so the two can be compared by eye.
     """
     return [
         (root / "camera" / "cam.yaml", "cameras", "camera.cameras"),
@@ -71,9 +71,9 @@ def section_sources(root: Path) -> list[tuple[Path, str, str]]:
 def index_origins(root: Path, layers: tuple[str, ...] = ()) -> dict[str, Origin]:
     """Map each dotted config key to the file/line/layer whose value wins.
 
-    Layers are applied in the loader's order (base first, then each profile layer left to right), so a
-    later write simply overwrites the earlier record: the same precedence, tracked instead of forgotten.
-    Files that do not exist are skipped silently: an absent overlay is the normal case, not an error.
+    Layers are applied in the loader's order (base first, then each profile layer left to right), so
+    a later write overwrites the earlier record and precedence needs no separate model. Files that do
+    not exist are skipped silently: an absent overlay is the normal case, not an error.
     """
     origins: dict[str, Origin] = {}
     for base, top_key, prefix in section_sources(root):
@@ -174,10 +174,10 @@ def index_chains(root: Path, layers: tuple[str, ...] = ()) -> dict[str, list[Ori
 def comment_above(origin: Origin) -> str:
     """The contiguous ``#`` block written immediately above ``origin``'s line, dedented.
 
-    The YAML comments carry the measured why of a value ("measured by sweeping the real planner: 6/6
-    up to 6 mm and 0/6 at 10 mm"), and ``yaml.safe_load`` throws every one of them away. Harvesting
-    the block at query time surfaces that evidence without moving a character: the comment stays where
-    its author put it.
+    A YAML comment often carries the measurement behind a value ("measured by sweeping the real
+    planner: 6/6 up to 6 mm and 0/6 at 10 mm"), and ``yaml.safe_load`` discards every one of them.
+    Reading the block at query time surfaces that evidence without copying it anywhere: the comment
+    stays in the file its author wrote it in.
     """
     try:
         lines = origin.file.read_text(encoding="utf-8").splitlines()
@@ -207,8 +207,8 @@ def read_value(origin: Origin) -> str:
 def nearest_keys(name: str, candidates: list[str], *, limit: int = 3) -> list[str]:
     """Closest ``candidates`` to ``name`` for a did-you-mean hint (stdlib difflib, no dependency).
 
-    ``extra='forbid'`` turns every typo into a hard stop, and the most common typo is a near-miss of a
-    real field, where only the spelling is missing.
+    ``extra='forbid'`` turns every typo into a hard stop, and the most common typo is a near-miss of
+    a real field, where only the spelling is missing.
     """
     import difflib
 

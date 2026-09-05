@@ -1,8 +1,9 @@
 """JSON-friendly serialization for :class:`Pose` and :class:`Transform`.
 
-The dictionaries are schema-versioned so that a breaking change, switching to
-WXYZ ordering or storing covariance for instance, can be detected and rejected
-rather than silently misread.
+Each dictionary carries a schema string, so a breaking change such as moving to
+WXYZ ordering or storing covariance is rejected on read instead of being
+misread as the current format. In the pose dictionary ``label`` is the only
+optional key; every other key of either dictionary is required.
 
 Pose::
 
@@ -55,7 +56,7 @@ TRANSFORM_SCHEMA: str = "willy.geometry.transform/1"
 
 
 def pose_to_dict(pose: Pose) -> dict[str, Any]:
-    """Serialise a :class:`Pose` to a JSON-friendly dictionary."""
+    """Serialise a :class:`Pose` to a JSON-friendly dict tagged ``POSE_SCHEMA``."""
     return {
         "schema": POSE_SCHEMA,
         "frame": pose.frame.value,
@@ -66,7 +67,11 @@ def pose_to_dict(pose: Pose) -> dict[str, Any]:
 
 
 def pose_from_dict(data: Mapping[str, Any]) -> Pose:
-    """Deserialise a :class:`Pose` from :func:`pose_to_dict` output."""
+    """Deserialise a :class:`Pose` from :func:`pose_to_dict` output.
+
+    Raises :class:`InvalidPoseError` on a schema mismatch, a missing key or a
+    field value :class:`Pose` refuses.
+    """
     schema = data.get("schema")
     if schema != POSE_SCHEMA:
         raise InvalidPoseError(
@@ -89,7 +94,7 @@ def pose_from_dict(data: Mapping[str, Any]) -> Pose:
 
 
 def transform_to_dict(t: Transform) -> dict[str, Any]:
-    """Serialise a :class:`Transform` to a JSON-friendly dictionary."""
+    """Serialise a :class:`Transform` to a dict tagged ``TRANSFORM_SCHEMA``."""
     return {
         "schema": TRANSFORM_SCHEMA,
         "from_frame": t.from_frame.value,
@@ -100,7 +105,11 @@ def transform_to_dict(t: Transform) -> dict[str, Any]:
 
 
 def transform_from_dict(data: Mapping[str, Any]) -> Transform:
-    """Deserialise a :class:`Transform` from :func:`transform_to_dict` output."""
+    """Deserialise a :class:`Transform` from :func:`transform_to_dict` output.
+
+    Raises :class:`InvalidTransformError` on a schema mismatch, a missing key
+    or a field value :class:`Transform` refuses.
+    """
     schema = data.get("schema")
     if schema != TRANSFORM_SCHEMA:
         raise InvalidTransformError(

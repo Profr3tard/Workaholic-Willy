@@ -1,12 +1,12 @@
 """
 AX = XB hand-eye calibration solver.
 
-Pure-numpy implementation of the closed-form rotation-first approach based on
-the Kronecker-product and SVD formulation (Park & Martin 1994, adapted).
+Numpy only. Rotation first, in closed form, on the Kronecker-product and SVD
+formulation of Park and Martin (1994), adapted.
 
-The solver is convention-agnostic: it performs only the linear algebra. The
-caller must supply the correct ``A`` and ``B`` matrices for the chosen
-calibration mode:
+The solver is convention-agnostic: it runs the linear algebra and nothing
+else. Which transform ``X`` comes out is decided entirely by the ``A`` and
+``B`` the caller builds for the chosen calibration mode:
 
 Eye-to-hand (fixed camera, marker on gripper)
 ---------------------------------------------
@@ -14,7 +14,7 @@ Eye-to-hand (fixed camera, marker on gripper)
     B_i  = T_cam_to_marker_{i+1} @ inv(T_cam_to_marker_i)   (relative marker motion)
     X    = T_cam_to_base                                      (solve target)
 
-    Both A and B can be computed with :meth:`HandEyeAXXB.relative_motions`.
+    Both sides are plain outputs of :meth:`HandEyeAXXB.relative_motions`.
 
 Eye-in-hand (camera on gripper, fixed marker)
 ----------------------------------------------
@@ -22,17 +22,17 @@ Eye-in-hand (camera on gripper, fixed marker)
     B_i  = T_cam_to_marker_{i+1} @ inv(T_cam_to_marker_i)   (relative marker motion)
     X    = T_cam_to_tool                                      (solve target)
 
-    This is what :class:`EyeInHandCalibrator` builds in
-    ``eye_hand/eye_in_hand/calibrator.py``; only ``B`` is a plain output of
-    :meth:`relative_motions`, so ``A`` must be built manually.
+    :class:`EyeInHandCalibrator` in ``eye_hand/eye_in_hand/calibrator.py``
+    builds this pairing. Only ``B`` is a plain output of
+    :meth:`relative_motions`; ``A`` is the local motion and is built by hand.
 
     .. warning::
        Swapping the two sides gives the exact inverse, not an error. Marker on
-       the ``A`` side and gripper on the ``B`` side with both index orders
-       reversed is a pair where ``A' = inv(B)`` and ``B' = inv(A)``, solved by
-       ``X' = inv(X)``: the result is ``T_tool_to_cam`` under a ``T_cam_to_tool``
-       label, and nothing raises. On the shipped sim geometry that inversion is
-       roughly 290 mm out.
+       the ``A`` side and gripper on the ``B`` side, with both index orders
+       reversed, is the pair ``A' = inv(B)``, ``B' = inv(A)``, which is solved
+       by ``X' = inv(X)``. The result is ``T_tool_to_cam`` under a
+       ``T_cam_to_tool`` label and nothing raises. On the shipped sim geometry
+       that inversion is roughly 290 mm out.
 
 Reference
 ---------
@@ -79,6 +79,11 @@ def _validate_homogeneous_matrix(value: object, *, name: str) -> np.ndarray:
 
 
 def _invert_homogeneous(matrix: np.ndarray) -> np.ndarray:
+    """Invert a rigid 4x4 transform by transposing its rotation block.
+
+    Valid only for a rigid transform, which is what
+    :func:`_validate_homogeneous_matrix` has already established.
+    """
     inverse = np.eye(4, dtype=np.float64)
     rotation = matrix[:3, :3]
     translation = matrix[:3, 3]
@@ -88,7 +93,11 @@ def _invert_homogeneous(matrix: np.ndarray) -> np.ndarray:
 
 
 def _rot_to_vec(R: np.ndarray) -> np.ndarray:
-    """Matrix logarithm of a rotation matrix -> axis-angle vector (3,)."""
+    """Matrix logarithm of a rotation matrix, as an axis-angle vector (3,).
+
+    An angle under 1e-10 rad leaves the axis undefined, so the zero vector is
+    returned there.
+    """
     cos_angle = np.clip((np.trace(R) - 1.0) / 2.0, -1.0, 1.0)
     angle = float(np.arccos(cos_angle))
     if abs(angle) < 1e-10:
@@ -101,7 +110,10 @@ def _rot_to_vec(R: np.ndarray) -> np.ndarray:
 
 
 def _vec_to_rot(v: np.ndarray) -> np.ndarray:
-    """Rodrigues axis-angle vector -> 3x3 rotation matrix."""
+    """Rodrigues exponential of an axis-angle vector, as a 3x3 rotation.
+
+    A norm under 1e-10 returns the identity.
+    """
     theta = float(np.linalg.norm(v))
     if theta < 1e-10:
         return np.eye(3, dtype=np.float64)
@@ -116,9 +128,11 @@ def _vec_to_rot(v: np.ndarray) -> np.ndarray:
 def _project_to_SO3(M: np.ndarray) -> np.ndarray:
     """Project an approximate rotation matrix onto SO(3) via SVD.
 
-    The SVD null-space vector has a sign ambiguity (+/-vec(R_X)); when the
-    null vector is the negative of the correct answer, ``M ~= -R_X_true``
-    has ``det ~= -1``.  Negating ``M`` before projection recovers ``R_X_true``.
+    The null-space vector that :meth:`HandEyeAXXB._solve_rotation` feeds in
+    carries a sign ambiguity (+/-vec(R_X)), so ``M`` may be the negative of the
+    wanted rotation, which shows as ``det ~= -1``. Negating ``M`` first recovers
+    ``R_X_true``; the second determinant check catches a reflection introduced
+    by the SVD factors themselves.
     """
     if np.linalg.det(M) < 0:
         M = -M
@@ -133,12 +147,14 @@ def _project_to_SO3(M: np.ndarray) -> np.ndarray:
 class HandEyeAXXB:
     """Closed-form AX = XB hand-eye calibration solver.
 
-    Solves for the unknown rigid transform X (4 x 4) given N pairs of
-    relative transforms (A_i, B_i) that satisfy:
+    Solves for the unknown rigid transform X (4 x 4) from N pairs of relative
+    transforms (A_i, B_i) that satisfy:
 
         A_i  X  ~=  X  B_i      for i = 1 ... N
 
     At least :data:`_MIN_PAIRS` (3) linearly independent pairs are required.
+    The rotation is solved first and the translation on top of it, so a bad
+    rotation carries into the translation.
 
     Usage::
 
@@ -165,21 +181,27 @@ class HandEyeAXXB:
             List of N (4, 4) homogeneous transforms (the "left" side).
         B_mats:
             List of N (4, 4) homogeneous transforms (the "right" side).
-            Must have the same length as *A_mats*.
+            Must have the same length as *A_mats*, and ``B_mats[i]`` must be
+            the motion recorded at the same step as ``A_mats[i]``.
 
         Returns
         -------
         X:
-            (4, 4) best-fit homogeneous transform.
+            (4, 4) best-fit homogeneous transform. Which transform that is
+            depends on the pairing the caller passed in; see the module
+            docstring.
         rmse:
             Frobenius-norm residual RMSE averaged over all pairs:
-            ``mean||A_i X - X B_i||_F``.
+            ``mean||A_i X - X B_i||_F``. The norm runs over the whole 4x4, so
+            it mixes the rotation and translation residuals.
 
         Raises
         ------
-        ValueError
-            If fewer than 3 pairs are provided, or arrays are not valid rigid
-            homogeneous transforms.
+        CalibrationDataError
+            If fewer than 3 pairs are provided, the two lists differ in
+            length, or an array is not a valid rigid homogeneous transform.
+        CalibrationSolveError
+            If the solve produces non-finite values.
         """
         A_mats = [
             _validate_homogeneous_matrix(A, name=f"A_mats[{index}]")
@@ -211,9 +233,9 @@ class HandEyeAXXB:
         X[:3, 3] = t_X
 
         rmse = self._residual_rmse(A_mats, B_mats, X)
-        # The solver is convention-agnostic, so this file is the only place that records what
-        # was actually solved: an inverted A/B pairing shows up here as a plausible rmse with
-        # a translation that is the wrong magnitude.
+        # The solver is convention-agnostic, so this line is the only record of what was
+        # actually solved. An inverted A and B pairing reaches it as a plausible rmse
+        # next to a translation of the wrong magnitude.
         logger.info(
             "Solved X from %d pairs: residual rmse=%.4f, |t_X|=%.2f mm.",
             len(A_mats),
@@ -228,17 +250,26 @@ class HandEyeAXXB:
 
         Given [T_0, T_1, ..., T_{N-1}] returns
         [T_1 @ inv(T_0),  T_2 @ inv(T_1),  ...,  T_{N-1} @ inv(T_{N-2})]
-        (length N-1).
+        (length N-1). This is the global relative motion, which both sides of
+        the eye-to-hand pairing want. Eye-in-hand needs the local motion on
+        the ``A`` side and builds it without this method.
 
         Parameters
         ----------
         T_mats:
-            List of N (4, 4) absolute homogeneous transforms.
+            List of N (4, 4) absolute homogeneous transforms, in the order
+            they were recorded.
 
         Returns
         -------
         list[np.ndarray]
             N-1 relative transforms, each (4, 4).
+
+        Raises
+        ------
+        CalibrationDataError
+            If fewer than 2 poses are given, or one is not a valid rigid
+            homogeneous transform.
         """
         if len(T_mats) < 2:
             raise CalibrationDataError("Need at least 2 poses to compute relative motions")
@@ -264,28 +295,30 @@ class HandEyeAXXB:
     ) -> np.ndarray:
         """Find R_X via the Kronecker-product null-space approach.
 
-        From R_A R_X = R_X R_B, using the column-major vec identity:
+        The rotation blocks alone give R_A R_X = R_X R_B, and the column-major
+        vec identity turns that into a homogeneous linear system:
 
             vec(AXB) = kron(B^T, A) vec(X)
             =>  (kron(I, R_A) - kron(R_B^T, I)) vec(R_X) = 0
 
         Stack all pairs into K (9N x 9), find the null-space vector via SVD
         (last right singular vector), reshape with Fortran ('F') order to
-        match the column-major convention, then project to SO(3).
+        match the column-major convention, then project to SO(3), which the
+        null vector only approximates.
         """
         n = len(A_mats)
         K = np.zeros((9 * n, 9), dtype=np.float64)
         for i, (A, B) in enumerate(zip(A_mats, B_mats)):
             R_A = A[:3, :3]
             R_B = B[:3, :3]
-            # Column-major formula: kron(I, R_A) vec(X) = vec(R_A X),
-            #                       kron(R_B^T, I) vec(X) = vec(X R_B).
+            # In the column-major convention: kron(I, R_A) vec(X) = vec(R_A X)
+            # and kron(R_B^T, I) vec(X) = vec(X R_B).
             K[9 * i : 9 * (i + 1)] = (
                 np.kron(np.eye(3), R_A) - np.kron(R_B.T, np.eye(3))
             )
 
         _, _, Vt = np.linalg.svd(K)
-        v = Vt[-1]  # last right singular vector -> null space = vec(R_X)
+        v = Vt[-1]  # last right singular vector: the null space, vec(R_X)
         R_approx = v.reshape(3, 3, order="F")
         return _project_to_SO3(R_approx)
 
@@ -299,14 +332,15 @@ class HandEyeAXXB:
         B_mats: list[np.ndarray],
         R_X: np.ndarray,
     ) -> np.ndarray:
-        """Find t_X via linear least squares.
+        """Find t_X via linear least squares, given the solved R_X.
 
-        From AX = XB (translation rows):
+        The translation rows of AX = XB give:
 
             R_A t_X + t_A = R_X t_B + t_X
             (R_A - I) t_X = R_X t_B - t_A
 
-        Stack all N equations and solve in the least-squares sense.
+        Stack all N equations into 3N rows over three unknowns and solve in
+        the least-squares sense.
         """
         n = len(A_mats)
         C = np.zeros((3 * n, 3), dtype=np.float64)

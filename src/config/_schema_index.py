@@ -1,20 +1,20 @@
 """Every field the schema accepts, including the ones no YAML mentions.
 
-Reading the YAML tells you what someone chose, not what may be chosen: measured, 107 schema fields
-appear in no shipped YAML at all, among them ``robot.ur.model``, the field that decides whether a real
-UR3e is planned and collision-checked as a UR3e or as a UR5e. Grepping the YAML for "gripper" likewise
-finds five hits and misses the entire suction end-effector.
+The YAML shows what someone chose, not what may be chosen: measured, 107 schema fields appear in no
+shipped YAML at all, among them ``robot.ur.model``, which decides whether a real UR3e is planned and
+collision-checked as a UR3e or as a UR5e. Searching the YAML for "gripper" likewise finds five hits
+and misses the entire suction end-effector.
 
 This module is the other half: a flat, dotted index of the schema (type, constraints, default and
-description for every field), derived from ``AppConfig.model_json_schema()`` rather than
-hand-maintained, so it cannot fall out of date with the models.
+description per field), derived from ``AppConfig.model_json_schema()`` rather than hand-maintained,
+so it cannot fall out of date with the models.
 
 Nested models are followed through ``$ref``; a ``dict[str, Model]`` (e.g. ``robot.sim.cameras``) is
-indexed once under a ``*`` segment because every key under it accepts the same shape; a list of models
-is indexed under ``[]``. Recursion is depth-capped and ref-cycle-guarded so a self-referencing schema
-cannot hang the CLI.
+indexed once under a ``*`` segment because every key under it accepts the same shape; a list of
+models is indexed under ``[]``. Recursion is depth-capped and ref-cycle-guarded so a self-referencing
+schema cannot hang the CLI.
 
-Pure stdlib + the schema package: no robot-runtime import, nothing to keep in sync by hand.
+Stdlib plus the schema package: no robot-runtime import, nothing to keep in sync by hand.
 """
 
 from __future__ import annotations
@@ -156,8 +156,8 @@ def _walk(
 def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
     """Resolve a dotted path to ``(owning model class, field name)``, or ``None``.
 
-    Walks the real Pydantic models rather than the JSON schema: the answer wanted here is which class
-    declares the field, and the JSON schema has flattened that away.
+    Walks the real Pydantic models rather than the JSON schema, which has flattened away the one
+    thing wanted here: which class declares the field.
     """
     import typing
 
@@ -166,12 +166,12 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
     from .schema.app import AppConfig
 
     def _unwrap(annotation: Any, owner: Any = None) -> Any:
-        """Strip Optional / dict[str, M] / list[M] down to a BaseModel, if there is one under there.
+        """Strip Optional / dict[str, M] / list[M] down to a BaseModel, if one is in there.
 
-        Some annotations arrive as an unresolved ForwardRef string (``"X | None"``) because the schema
+        Some annotations arrive as an unresolved ForwardRef string (``"X | None"``): the schema
         modules use ``from __future__ import annotations`` and pydantic never needed to rebuild them.
-        Resolving it against the declaring module's namespace is what lets the walk reach blocks such
-        as ``recovery.fixture``, which otherwise read as undocumented for a typing reason.
+        Resolving that string against the declaring module's namespace is what lets the walk reach
+        blocks such as ``recovery.fixture``, which otherwise read as undocumented for a typing reason.
         """
         import sys as _sys
 
@@ -221,13 +221,13 @@ def _model_at(path_parts: list[str]) -> tuple[type, str] | None:
 def field_doc(path: str) -> str:
     """The comment block written immediately above a field in its schema source, dedented.
 
-    Accepts both ``#:`` (the Sphinx-style marker) and plain ``#``, because the schema sources use
-    both: ``robot.sim.robot_model`` carries a four-line plain-``#`` explanation of the de-locking that
-    field does, and taking only ``#:`` reports such a field as undocumented.
+    Both ``#:`` (the Sphinx-style marker) and plain ``#`` count, because the schema sources use both:
+    ``robot.sim.robot_model`` carries a three-line plain-``#`` explanation of the de-locking that field
+    does, and accepting only ``#:`` reports such a field as undocumented.
 
-    Pydantic does not lift such comments into the JSON schema, so harvesting the block at query time
-    is what surfaces it, without duplicating the prose into a ``description=`` that would then have to
-    be kept in sync.
+    Pydantic does not lift these comments into the JSON schema, so reading the block from the source
+    at query time is what surfaces it, without copying the prose into a ``description=`` that would
+    then have to be kept in sync.
     """
     import inspect
 
@@ -297,8 +297,8 @@ def _alias_pairs() -> dict[str, str]:
 
     The stereomatcher block keeps OpenCV's camelCase in YAML (``numDisparities``) behind snake_case
     attributes (``num_disparities``), the only aliased fields in the tree. The JSON schema knows only
-    the alias, so without this mapping ``explain`` of an attribute name answers "not a known key"
-    while printing that key's value.
+    the alias, so without this mapping ``explain`` reports an attribute name as an unknown key while
+    printing that key's value.
     """
     import typing
 

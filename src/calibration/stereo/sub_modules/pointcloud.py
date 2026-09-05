@@ -1,16 +1,16 @@
 """3D reconstruction from rectified stereo + disparity.
 
 ``depth_map`` takes ``Z`` straight from the Q matrix,
-``Z = Q[2,3] / (Q[3,2]*d + Q[3,3])``, rather than through
+``Z = Q[2,3] / (Q[3,2]*d + Q[3,3])``, instead of calling
 ``cv.reprojectImageTo3D``, which allocates a full ``(H, W, 3)`` float32 buffer
-to keep one plane: same numerical result, ~2x faster, one third of the memory
+for one plane: identical numbers, about 2x faster, one third of the memory
 traffic.
 
-``representative_point`` applies Q to the one pixel through ``_project_pixel``;
+``representative_point`` applies Q to a single pixel through ``_project_pixel``;
 ``representative_point_mask`` reduces over the full ``reproject`` output.
 
-Missing data is ``NaN`` throughout, the convention of the disparity pipeline.
-A singular reprojection (``W ~= 0``) yields ``NaN`` rather than raising.
+Missing data is ``NaN`` throughout, the convention of the disparity pipeline:
+a singular reprojection (``W ~= 0``) yields ``NaN`` rather than raising.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class PointCloudReconstructor:
             raise StereoCalibrationError(f"Q must have shape (4, 4), got {self.Q.shape}")
         if not np.all(np.isfinite(self.Q)):
             raise StereoCalibrationError("Q must contain only finite values")
-        # The Q entries of the Z-only path, Z(d) = q23 / (q32 * d + q33).
+        # Q entries for the depth-only path, Z(d) = q23 / (q32 * d + q33).
         # cv.stereoRectify documents the full Q layout.
         self._q23 = float(self.Q[2, 3])
         self._q32 = float(self.Q[3, 2])
@@ -45,9 +45,9 @@ class PointCloudReconstructor:
     # Full 3D reprojection, for callers that need (H, W, 3)
     # ------------------------------------------------------------------
     def reproject(self, disparity_px: np.ndarray) -> np.ndarray:
-        """Reproject a disparity map into 3D points using Q.
+        """Reproject a 2-D disparity map into an ``(H, W, 3)`` array of points.
 
-        See OpenCV's ``cv.reprojectImageTo3D`` for the underlying maths.
+        The maths is OpenCV's ``cv.reprojectImageTo3D``.
         """
         disparity_array = np.asarray(disparity_px, dtype=np.float32)
         if disparity_array.ndim != 2:
@@ -68,19 +68,19 @@ class PointCloudReconstructor:
     ) -> np.ndarray:
         """Compute a depth map (Z, in ``unit``) from a rectified stereo pair.
 
-        Invalid / missing samples are returned as NaN.
+        Invalid and missing samples are NaN.
         """
         validate_image_pair_shapes(np.asarray(rect_left_bgr), np.asarray(rect_right_bgr))
         disp, valid = disparity.compute(rect_left_bgr, rect_right_bgr)
 
-        # Z = q23 / (q32 * d + q33). NaN propagates through the divisions.
+        # A NaN disparity propagates through the division into Z.
         denom = self._q32 * disp + self._q33
-        # An exact-zero denominator, rare with real disparities, divides to
-        # infinity here instead of warning.
+        # An exact-zero denominator is rare with real disparities and divides
+        # to infinity here rather than warning.
         with np.errstate(divide="ignore", invalid="ignore"):
             Z_mm = self._q23 / denom
         Z_mm[~valid] = np.nan
-        # Singular reprojection -> infinity -> coerce to NaN.
+        # Infinity from a singular reprojection becomes NaN.
         Z_mm[~np.isfinite(Z_mm)] = np.nan
 
         return Z_mm * unit_scaling(unit)
@@ -97,7 +97,11 @@ class PointCloudReconstructor:
         y: int,
         unit: str = "cm",
     ) -> np.ndarray:
-        """3D point at pixel ``(x, y)`` of the rectified left frame."""
+        """3D point at pixel ``(x, y)`` of the rectified left frame.
+
+        Raises IndexError outside the frame and ValueError where the disparity
+        is missing or not positive.
+        """
         validate_image_pair_shapes(np.asarray(rect_left_bgr), np.asarray(rect_right_bgr))
         disp, valid = disparity.compute(rect_left_bgr, rect_right_bgr)
 
@@ -127,7 +131,10 @@ class PointCloudReconstructor:
         reducer: str = "median",
         unit: str = "cm",
     ) -> Optional[np.ndarray]:
-        """Reduce the 3D points inside ``mask`` to a single representative point."""
+        """Reduce the 3D points inside ``mask`` to a single representative point.
+
+        Returns None when no pixel is both valid and inside the mask.
+        """
         validate_image_pair_shapes(np.asarray(rect_left_bgr), np.asarray(rect_right_bgr))
         if reducer not in {"mean", "median"}:
             raise StereoCalibrationError("reducer must be 'mean' or 'median'")
@@ -156,7 +163,7 @@ class PointCloudReconstructor:
     # Internal
     # ------------------------------------------------------------------
     def _project_pixel(self, x: int, y: int, d: float) -> np.ndarray:
-        """Apply the Q matrix to a single pixel + disparity."""
+        """Apply the Q matrix to one pixel and its disparity; NaN when ``W`` is 0."""
         Q = self.Q
         X = Q[0, 0] * x + Q[0, 1] * y + Q[0, 2] * d + Q[0, 3]
         Y = Q[1, 0] * x + Q[1, 1] * y + Q[1, 2] * d + Q[1, 3]

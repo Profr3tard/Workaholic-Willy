@@ -1,4 +1,4 @@
-"""Eye-in-hand mounted-camera calibration API."""
+"""Public entry point for eye-in-hand calibration."""
 
 from __future__ import annotations
 

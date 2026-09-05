@@ -11,14 +11,11 @@ class ExtrinsicsTransformer:
     """
     Transforms 3D points from a camera frame into a robot base frame.
 
-    Holds the extrinsic calibration as one Transform tagged CAMERA -> BASE; a
-    transform between any other pair of frames is refused. `set_matrix` sets or
-    replaces it. Points are positions in millimetres. `T` exposes the same
+    Holds the extrinsic calibration as one Transform tagged CAMERA -> BASE;
+    any other frame pair is refused. `set_matrix` takes a 4x4 matrix and
+    `set_transform` a Transform or a calibration Extrinsics, each replacing
+    what is held. Points are positions in millimetres. `T` is the same
     transform as a 4x4 homogeneous matrix, or None while none is set.
-
-    Usage:
-        transformer = ExtrinsicsTransformer(T_cam_to_base)
-        point_base = transformer.transform(point_cam)
     """
     
     def __init__(
@@ -64,9 +61,9 @@ class ExtrinsicsTransformer:
         """
         Transforms a 3D point from camera coordinates to robot base coordinates.
 
-        The point becomes homogeneous [x_c, y_c, z_c, 1], is multiplied by
-        T_cam_to_base, and the first three components are returned: the same
-        position expressed in the robot base frame.
+        `point_cam` is a position in millimetres; it is validated and then
+        carried through T_cam_to_base. Raises StereoCalibrationError while no
+        transform is set.
         """
 
         if self._transform is None:

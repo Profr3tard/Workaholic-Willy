@@ -2,16 +2,15 @@
 
 Two routes exist because they fail differently, not because one is better. The simple route
 (GroundingDINO + SAM2) is fast and reliable on short attributive noun phrases and fails confidently
-on anything else: it returns a high-scoring box for the wrong object rather than admitting defeat.
-A cascade ("try cheap first, fall back if it looks bad") cannot work against that, because there is
-no reliable signal to fall back on. The decision is therefore made from the prompt alone, before any
-model runs.
+on anything else: it returns a high-scoring box for the wrong object rather than admitting defeat. A
+cascade that tries the cheap route first has nothing reliable to fall back on, so the decision is
+made from the prompt alone, before any model runs.
 
 Everything here is data, not behaviour: the rules live in :mod:`.rules`, and :class:`PromptRouter` is
-the seam a learned judge can occupy later without touching a single caller.
+the seam a learned judge can occupy without touching a single caller.
 
-The thresholds these signals feed are judgement, not measurement. Nobody has measured where
-GroundingDINO's grounding accuracy actually falls off on this cell's scenes.
+The thresholds these signals feed are judgement, not measurement. Where GroundingDINO's grounding
+accuracy falls off on this cell's scenes is unmeasured.
 """
 
 from __future__ import annotations
@@ -39,10 +38,10 @@ class Route(StrEnum):
 class RouteReason(StrEnum):
     """Why a prompt was routed, in the router's own words.
 
-    Every complex reason names a linguistic property that the simple path cannot represent: it grounds
-    a phrase, with no notion of reference, negation, comparison or scope. The reason travels with the
-    decision into telemetry so an operator can see not just that the expensive route ran, but what
-    about their wording caused it.
+    Every complex reason names a linguistic property the simple path cannot represent: it grounds a
+    phrase, with no notion of reference, negation, comparison or scope. The reason travels with the
+    decision into telemetry, so an operator sees which part of the wording sent the prompt to the
+    expensive route.
     """
 
     PLAIN_NOUN_PHRASE = "plain_noun_phrase"      #: -> SIMPLE. Nothing here the phrase grounder cannot do.
@@ -63,8 +62,8 @@ class RouteReason(StrEnum):
 class PromptSignals:
     """What the router measured about a prompt. Typed, not a bare dict, because it is logged.
 
-    These are the inputs to the decision, kept separately from it so a disagreement about routing can
-    be settled by looking at what was actually detected rather than re-deriving it.
+    The inputs to the decision, kept apart from it so a disagreement about routing is settled from
+    what was detected rather than by re-deriving it.
     """
 
     words: int
@@ -107,9 +106,9 @@ class RouteDecision:
 class PromptRouter(Protocol):
     """The seam. A learned judge implements this and every caller keeps working.
 
-    Deliberately narrow: a router sees the prompt and nothing else. Giving it the image would make the
-    decision un-cacheable and untestable offline, and would mean loading a model to decide whether to
-    load a model.
+    Narrow on purpose: a router sees the prompt and nothing else. Passing the image would make the
+    decision un-cacheable and untestable offline, and would load a model to decide whether to load a
+    model.
     """
 
     def route(self, prompt: str) -> RouteDecision: ...

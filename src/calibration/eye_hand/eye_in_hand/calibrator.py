@@ -1,4 +1,4 @@
-"""End-effector-mounted eye-in-hand calibration workflow."""
+"""Tool-mounted-camera eye-in-hand calibration workflow."""
 
 from __future__ import annotations
 
@@ -14,7 +14,11 @@ class EyeInHandCalibrator(BaseEyeHandCalibrator):
     """Solve ``T_cam_to_tool`` for a camera mounted on the robot tool."""
 
     def calibrate(self) -> EyeHandCalibrationResult:
-        """Return a typed ``Transform(CAMERA -> TOOL)`` result."""
+        """Return a typed ``Transform(CAMERA -> TOOL)`` result.
+
+        Refuses with :class:`CalibrationDataError` unless the dataset holds
+        ``min_samples`` poses rotating about two independent axes.
+        """
         self._assert_ready()
         T_base_to_tool_list, T_cam_to_marker_list = self._sample_matrices()
         pair_count = len(T_base_to_tool_list) - 1

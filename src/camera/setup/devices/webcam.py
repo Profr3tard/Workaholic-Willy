@@ -8,13 +8,14 @@ from src.camera.setup.quality import configure_camera_for_quality
 
 
 class StereoVisionCalibrationWebcams:
-    """
-    Records stereo calibration pairs from two separate webcams.
+    """Records stereo calibration pairs from two separate webcams.
 
-    Opens both cameras, configures each through `configure_camera_for_quality` and rejects a
-    pair whose resolution or frame rate does not match. Capture grabs from both cameras before
-    either is retrieved, which keeps the temporal offset between the two images small. The
-    saved images are the raw frames; the operator overlay is drawn on preview copies only.
+    Opens both cameras and configures each through ``configure_camera_for_quality``. A pair
+    whose resolution or frame rate disagrees is refused; a pixel format that differs is only
+    logged. Capture grabs from both cameras before either is retrieved, which keeps the offset
+    between the two exposures small. It is interactive: ``s`` saves the pair on screen and ESC
+    ends the session. The saved images are the raw frames, so the operator overlay is drawn on
+    preview copies only.
     """
 
     def __init__(self, wc_cfg: WebcamPairRigConfig):
@@ -205,6 +206,7 @@ class StereoVisionCalibrationWebcams:
             )
 
     def forward(self):
+        """Open both cameras, check the pair agrees, and run the capture session."""
         os.makedirs(self.img_left, exist_ok=True)
         os.makedirs(self.img_right, exist_ok=True)
 

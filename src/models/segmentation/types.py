@@ -1,6 +1,6 @@
 """Shared segmentation result type, emitted by every segmenter backend.
 
-Crosses into ``src/robot/grasping/`` as a public input via the read-only
+It reaches ``src/robot/grasping/`` as a public input through the read-only
 ``SegmentationLike`` protocol. The ``mask`` is a ``uint8`` array of shape
 ``(H, W)`` with values in ``{0, 1}``.
 """

@@ -1,7 +1,7 @@
 """Bounded polling helper for the Whisper streaming STT loop.
 
-Kept torch / sounddevice-free and in its own module so the loop bound is
-unit-testable on any host (the parent ``speech_to_text`` module imports torch).
+Free of torch and sounddevice, and in its own module, so the loop bound runs on
+any host: the parent ``speech_to_text`` module imports torch.
 """
 
 from __future__ import annotations
@@ -38,9 +38,9 @@ def poll_until_text(
     Returns
     -------
     str | None
-        The first truthy text, or ``None`` once a bound is hit. If both bounds
-        are ``None`` this can still block indefinitely, which is the contract
-        for callers that explicitly opt out of bounding.
+        The first truthy text, or ``None`` once a bound is hit. With both
+        bounds ``None`` this can block indefinitely, the contract for a caller
+        that opts out of bounding.
     """
     start = now()
     attempts = 0

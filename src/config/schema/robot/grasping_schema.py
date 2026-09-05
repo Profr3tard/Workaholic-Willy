@@ -14,7 +14,9 @@ class GraspingClosedLoopConfig(StrictModel):
 
     Consumed by :class:`src.robot.grasping.closed_loop.refinement.RefinementPolicy`
     when the operator opts into closed-loop modes. ``enabled=False`` disables the
-    second-scan refinement step even when the active mode profile would permit it.
+    second-scan refinement step even when the active mode profile permits it. The
+    ``max_*_correction_*`` fields cap how far one refinement may move the grasp,
+    in millimetres and degrees.
     """
 
     enabled: bool = Field(default=False)
@@ -108,8 +110,8 @@ class GraspingDecisionConfig(StrictModel):
     Attributes
     ----------
     enabled
-        Master switch. When :data:`False`, the runtime does not build a
-        :class:`DecisionEngine` and the legacy pick path is used.
+        Master switch. When :data:`False`, the runtime builds no
+        :class:`DecisionEngine` and the pick path runs without one.
     auto_uncertainty_threshold
         Maximum uncertainty (in ``[0, 1]``) accepted as a confident grasp.
         ``uncertainty = (1 - top_score)`` plus an optional ``reasons_penalty``
@@ -152,16 +154,16 @@ class GraspingFeasibilityConfig(StrictModel):
     Carries three pre-commit feasibility signals that demote (never reject)
     candidates with poor execution prospects: IK reachability quality, joint-limit
     margin, and swept approach feasibility. All three are disabled by default
-    (byte-identical). The operator opts in per-signal by flipping the
-    corresponding ``*_enabled`` flag *and* setting a non-zero top-level
-    :attr:`weight`; without both, the signal carries no weight. ``apply_modes``
-    excludes ``easy`` so easy's cycle-time budget is preserved.
+    (byte-identical). A signal takes effect only when its ``*_enabled`` flag is
+    set and the top-level :attr:`weight` is non-zero; one without the other
+    carries no weight. ``apply_modes`` excludes ``easy`` so easy's cycle-time
+    budget is preserved.
 
     Attributes
     ----------
     enabled
         Master switch. When :data:`False`, the calculator is built without a
-        feasibility scorer and the legacy ranking is used.
+        feasibility scorer and the ranking is unchanged.
     weight
         Top-level feasibility weight in the
         :class:`~src.robot.grasping.scoring.GraspScoreWeights` normalised
@@ -208,12 +210,13 @@ class GraspingOcclusionConfig(StrictModel):
     """Occlusion and hidden-geometry knobs.
 
     Carries two directional-occlusion behaviours on top of the feasibility
-    carrier: a corridor analyzer (marches the approach axis, and optionally the retreat
-    axis, in camera-frame to estimate per-direction clearance and a fused
-    depth+mask blockage confidence) and a hard reject (drops candidates whose
-    corridor confidence exceeds :attr:`hard_reject_confidence_threshold` instead
-    of merely demoting them). All flags default off (byte-identical); easy is
-    excluded from :attr:`apply_modes`.
+    carrier: a corridor analyzer, which marches the approach axis (and the
+    retreat axis when asked) in camera frame to estimate per-direction clearance
+    and a fused depth+mask blockage confidence, and a hard reject, which drops
+    candidates whose corridor confidence exceeds
+    :attr:`hard_reject_confidence_threshold` instead of merely demoting them.
+    All flags default off (byte-identical); ``easy`` is excluded from
+    :attr:`apply_modes`.
 
     Attributes
     ----------
@@ -233,8 +236,8 @@ class GraspingOcclusionConfig(StrictModel):
         Convex-combination weight of mask blockage vs depth blockage in the
         analyzer's fused confidence.
     partial_confidence_threshold, hard_reject_confidence_threshold
-        Confidence cut-offs separating clear <-> partial <-> blocked and the
-        hard-reject trigger respectively.
+        Confidence cut-offs separating the ``clear``, ``partial`` and ``blocked``
+        :class:`CorridorMode` bands, and the hard-reject trigger respectively.
     top_k
         Cap on number of candidates analyzed per ``pick()`` cycle.
     """
@@ -273,11 +276,10 @@ class GraspingOcclusionConfig(StrictModel):
 class BlockerGraphSchemaConfig(StrictModel):
     """Per-signal blocker-graph flags.
 
-    Every signal defaults off so :class:`GraspingOrderingConfig` is behaviourally
-    inert until the operator opts in. ``adjacency_radius_px`` is integer pixels in
-    the perception mask; ``depth_tolerance_mm`` is millimetres of camera-space
-    depth difference required before one candidate is considered "in front of"
-    another.
+    Every signal defaults off, so :class:`GraspingOrderingConfig` is inert until an
+    operator opts in. ``adjacency_radius_px`` is integer pixels in the perception mask;
+    ``depth_tolerance_mm`` is the camera-space depth difference in millimetres required
+    before one candidate counts as in front of another.
     """
 
     mask_adjacency_enabled: bool = Field(default=False)
@@ -301,7 +303,7 @@ class GraspingOrderingConfig(StrictModel):
     is only displaced when the priority winner is within
     :attr:`max_local_score_drop` of it: the operator decides how much local score
     they will give up to unblock other picks. Every flag defaults off
-    (byte-identical); easy is excluded from the default apply-modes.
+    (byte-identical); ``easy`` is excluded from the default apply modes.
     """
 
     enabled: bool = Field(default=False)
@@ -330,11 +332,11 @@ class GraspingRecoveryConfig(StrictModel):
 
     Mirrors the surface in
     :class:`src.robot.grasping.recovery.SceneRecoveryPolicy` but holds
-    string action names (decoupled from the runtime enum import). Every flag
-    defaults off (byte-identical); easy is excluded from the default apply-modes.
-    When :attr:`allowed_actions` contains a physical action (``nudge_target`` /
-    ``container_agitate``), :attr:`fixture` must be set: the cross-field check
-    prevents arming a physical recovery without an envelope.
+    string action names, so the config layer imports no runtime enum. Every flag
+    defaults off (byte-identical); ``easy`` is excluded from the default apply
+    modes. When :attr:`allowed_actions` contains a physical action
+    (``nudge_target`` or ``container_agitate``), :attr:`fixture` must be set: the
+    cross-field check refuses to arm a physical recovery without an envelope.
     """
 
     enabled: bool = Field(default=False)
@@ -408,8 +410,8 @@ class GraspingRecoveryFixtureConfig(StrictModel):
     exceed these three numbers.
     """
 
-    #: Centre of the axis-aligned box, in the robot BASE frame (mm), inside which a physical recovery
-    #: action may act. Typically the bin or tray the cell is clearing.
+    #: Centre in robot BASE frame (mm) of the axis-aligned box a physical recovery action may act
+    #: inside, typically the bin or tray the cell is clearing.
     center_mm: tuple[float, float, float] = Field(...)
     #: Half the side length on each axis (mm), so the box spans ``center +/- half_extents``. Half
     #: extents rather than corners because the recovery planner reasons about distance from the centre.
@@ -423,9 +425,9 @@ class GraspingRecoveryFixtureConfig(StrictModel):
 class UncertaintyChannelWeightsConfig(StrictModel):
     """Per-channel weights for the uncertainty fusion layer.
 
-    The five always-produced channels default to ``1.0``. The two optional
-    channels (``topology_risk`` and ``semantic_confidence``) default to ``0.0``
-    because the runtime does not always produce them; operators opt them in.
+    The five always-produced channels default to ``1.0``; ``topology_risk`` and
+    ``semantic_confidence`` default to ``0.0`` because the runtime does not always
+    produce them, so an operator opts those two in.
     """
 
     depth_confidence: float = Field(default=1.0, ge=0.0)
@@ -456,7 +458,7 @@ class GraspingUncertaintyConfig(StrictModel):
     runtime carrier in :mod:`src.robot.grasping.uncertainty`). When
     :attr:`enabled`, :attr:`fail_closed_threshold` replaces
     :attr:`GraspingDecisionConfig.auto_uncertainty_threshold`; when disabled the
-    legacy decision threshold remains (byte-identical). The layer always emits a
+    decision layer keeps its own threshold (byte-identical). The layer always emits a
     typed snapshot on every :class:`AutonomousGraspReport` (``fused=0.0,
     fused_available=False`` when disabled). ``"easy"`` is excluded from
     :attr:`apply_modes`.
@@ -468,13 +470,13 @@ class GraspingUncertaintyConfig(StrictModel):
     fail_closed_threshold
         When ``fused >= fail_closed_threshold`` the decision layer fail-closes the
         attempt (replacing ``GraspingDecisionConfig.auto_uncertainty_threshold``).
-        Default ``0.4`` mirrors the legacy value.
+        Default ``0.4`` matches that threshold's own default.
     apply_modes
         Stable mode names the layer applies to. ``"easy"`` is rejected.
     weights
         Per-channel non-negative weights. When :attr:`enabled` at least one weight
-        must be strictly positive (otherwise the fused signal is unconditionally
-        zero, which is a footgun).
+        must be strictly positive; all-zero weights are refused, because a fused
+        signal pinned at zero gates nothing.
     ranking_penalty_weight
         Ranking carrier. Multiplies the fused uncertainty when subtracting from a
         candidate score. Default ``0.0`` => ranking byte-identical.
@@ -541,7 +543,7 @@ class GraspingUncertaintyConfig(StrictModel):
         if "easy" in self.apply_modes:
             raise ValueError(
                 "uncertainty.apply_modes must not include 'easy'; "
-                "'easy' mode is permanently excluded from T6."
+                "easy mode is permanently excluded from T6."
             )
         unknown = [m for m in self.apply_modes if m not in _KNOWN_GRASP_MODES]
         if unknown:
@@ -570,23 +572,19 @@ class GraspingUncertaintyConfig(StrictModel):
 class GraspingSuccessModelConfig(StrictModel):
     """Success-probability overlay (default off).
 
-    Ships the offline trainer + artifact + runtime-pure predictor. Defaults are
-    picked so adding this block (or omitting it) is byte-identical:
-    ``enabled=False`` => nothing in the pipeline loads or runs the model.
+    Points the runtime at a trained artifact and bounds what it may influence.
+    ``enabled=False`` means nothing in the pipeline loads or runs the model, so
+    adding this block or omitting it is byte-identical.
 
     Attributes
     ----------
     enabled
-        Master switch. Defaults to :data:`False` so the model is opaque to the
-        runtime.
+        Master switch. Defaults to :data:`False`, so the runtime never loads the
+        artifact.
     artifact_dir
         Path (absolute or relative to the config root) of the directory containing
         ``model.json`` and ``manifest.json``. Defaults to the committed v1 artifact
         under ``assets/models/success_probability/v1``.
-    feature_schema_version
-        The feature-schema version the runtime expects the artifact to declare.
-        Bumping it opts future feature-set extensions out of the v1 artifact
-        without breaking old deployments.
     apply_modes
         Stable mode names the model may score in. Defaults to the four canonical
         modes; ``"easy"`` is included because easy pick rate is the
@@ -654,7 +652,7 @@ class GraspingSuccessModelConfig(StrictModel):
             )
         if len(set(self.apply_modes)) != len(self.apply_modes):
             raise ValueError("success_model.apply_modes must be unique")
-        # Ranking-blend is locked to dense-only so easy/auto/CLOSED_LOOP never blend and easy pick-rate
+        # Ranking-blend is locked to dense-only so easy/auto/closed_loop never blend and easy pick-rate
         # cannot regress regardless of operator config.
         _DENSE_ONLY: frozenset[str] = frozenset(
             {"dense_clutter", "dense_autonomous"}
@@ -696,10 +694,11 @@ class GraspingWatchdogConfig(StrictModel):
     attempts, and surfaces a typed severity ladder
     (``none``/``low``/``moderate``/``high``/``severe``). Evaluators are pure
     functions; the :class:`AutonomousGraspService` owns the rolling history. The
-    default ``shadow`` mode computes + emits telemetry but never alters behaviour;
-    High/severe block auto on real hardware only (a telemetry flag in sim).
-    Defaults are conservative (a healthy scene stays ``none``); thresholds form
-    non-decreasing ladders and a misconfigured YAML is rejected at construction.
+    default ``shadow`` mode computes and emits telemetry but never alters
+    behaviour; ``high`` and ``severe`` block the ``auto`` mode on real hardware
+    only and are a telemetry flag in sim. Defaults are conservative (a healthy
+    scene stays ``none``); thresholds form non-decreasing ladders and a
+    misconfigured YAML is rejected at construction.
 
     Attributes
     ----------
@@ -714,8 +713,8 @@ class GraspingWatchdogConfig(StrictModel):
     block_modes
         Stable grasp-mode names (matching
         :class:`src.robot.grasping.types.modes.GraspMode`) that fall under the
-        High/severe block on real hardware. Defaults to ``("auto",)``. ``"easy"``
-        is permanently rejected.
+        ``high``/``severe`` block on real hardware. Defaults to ``("auto",)``.
+        ``"easy"`` is permanently rejected.
     """
 
     mode: str = Field(default="shadow", min_length=1)
@@ -834,7 +833,7 @@ class GraspingWatchdogConfig(StrictModel):
         if "easy" in self.block_modes:
             raise ValueError(
                 "watchdog.block_modes must not include 'easy'; "
-                "'easy' mode is permanently excluded from U+ "
+                "easy mode is permanently excluded from U+ "
                 "behavioural layers."
             )
         unknown = [m for m in self.block_modes if m not in _KNOWN_GRASP_MODES]
@@ -854,11 +853,10 @@ class GraspingWatchdogConfig(StrictModel):
 class GraspingPerformanceConfig(StrictModel):
     """Runtime SLO budgets and bounded-compute knobs.
 
-    Carries the per-stage p95 latency budgets the runtime measures against and
-    placeholders for bounded-compute knobs (timeouts + fallback policies) that are
-    plumbed end-to-end but not yet enforced: real enforcement waits for the live
-    success-probability model and fusion path, so today the timeouts are advisory.
-    Per-stage latency is captured by a typed
+    Carries the per-stage p95 latency budgets the runtime measures against, plus
+    timeouts and fallback policies that are plumbed end to end and not enforced:
+    enforcement waits on the live success-probability model and the fusion path,
+    so the timeouts are advisory. Per-stage latency is captured by a typed
     :class:`src.robot.grasping.telemetry.latency_tracker.LatencyTracker` seam owned
     by :class:`AutonomousGraspService`; a stage that does not run has an absent
     (``None``) latency and the SLO gate skips nulls. A breach emits a typed
@@ -874,9 +872,9 @@ class GraspingPerformanceConfig(StrictModel):
     decision_latency_slo_ms / ranking_latency_slo_ms / fusion_latency_slo_ms
         Per-stage p95 budgets enforced by the SLO gate.
     decision_timeout_ms / ranking_timeout_ms / fusion_timeout_ms
-        Hard per-stage caps. ``0.0`` means "no cap" (the current default); non-zero
-        values are honoured once the producers light up, and treated as telemetry
-        budgets today.
+        Hard per-stage caps. ``0.0`` means no cap and is the default; a non-zero
+        value is honoured once the producing stage enforces it, and is a telemetry
+        budget until then.
     model_fallback_policy
         How the runtime degrades when the success-probability model breaches its
         timeout: ``"legacy_score"`` reverts to geometry-only ranking, ``"skip"``
@@ -1045,7 +1043,7 @@ class RobotGraspingCommitPolicyConfig(StrictModel):
         default=("auto", "dense_clutter", "dense_autonomous"),
         description=(
             "Mode labels that activate the gate. Defaults to all modes "
-            "except 'easy'. The orchestrator skips the gate (and the "
+            "except easy. The orchestrator skips the gate (and the "
             "reobserve loop) when its resolved mode label is not in this set."
         ),
     )
@@ -1064,7 +1062,7 @@ class RobotGraspingCommitPolicyConfig(StrictModel):
         if "easy" in self.apply_modes:
             raise ValueError(
                 "commit_policy.apply_modes must not include 'easy' "
-                "(locked Q5: 'easy' is exempt from mandatory multi-view "
+                "(locked Q5: easy is exempt from mandatory multi-view "
                 "decisioning)"
             )
         return self
@@ -1077,7 +1075,7 @@ class RobotGraspingApproachValidationConfig(StrictModel):
     ranked candidate's approach/retreat sweep against the scene neighbour cloud (the calculator only
     checks the final grasp pose) and executes the first sweep-clear candidate, refusing with
     ``APPROACH_PATH_BLOCKED`` if every candidate is blocked. Default ``enabled=False`` is byte-identical;
-    Easy/single-object are exempt (``apply_modes`` excludes ``'easy'``).
+    ``easy`` and single-object picking are exempt (``apply_modes`` excludes ``'easy'``).
     """
 
     enabled: bool = Field(
@@ -1108,7 +1106,7 @@ class RobotGraspingApproachValidationConfig(StrictModel):
         default=("dense_clutter", "dense_autonomous"),
         description=(
             "Mode labels that activate the validator (the dense modes by default). The orchestrator "
-            "skips the check when its resolved mode label is not in this set. 'easy' is locked out."
+            "skips the check when its resolved mode label is not in this set. easy is locked out."
         ),
     )
 
@@ -1372,9 +1370,9 @@ class RobotGraspingFusionConfig(StrictModel):
         default=False,
         description=(
             "Read-side wiring switch. When True the viewpoint planner "
-            "may consume fused-state information-gain when scoring next "
-            "viewpoints. Default False keeps the planner path "
-            "byte-identical and isolates the commit-gate behavior change."
+            "may consume fused-state information gain when scoring next "
+            "viewpoints. Default False leaves the planner path "
+            "byte-identical, so the commit gate can be armed on its own."
         ),
     )
     extrinsics_artifact_path: str | None = Field(
@@ -1398,7 +1396,7 @@ class RobotGraspingFusionConfig(StrictModel):
             "The central place to declare + individually calibrate several cameras (multi-view). "
             "``build_config_frame_resolvers`` turns it into a {camera_id -> FrameResolver} map (eye_to_hand "
             "-> StaticCameraToBaseResolver, eye_in_hand -> EyeInHandFrameResolver). Empty (default) = the "
-            "legacy single-camera path via ``extrinsics_artifact_path`` (byte-identical). Fail-closed: an "
+            "single-camera path via ``extrinsics_artifact_path`` (byte-identical). Fail-closed: an "
             "enabled camera with a missing/invalid artifact raises at construction."
         ),
     )
@@ -1456,8 +1454,7 @@ class GraspingParallelJawGeometryConfig(StrictModel):
 
     Every value flows straight into
     :class:`src.robot.grasping.collision.ParallelJawGripperModel`. The finger dimensions are
-    measured off Isaac's Robotiq 2F-85 collision shapes (see the note on the fields); the palm ones
-    are not, and are marked as such.
+    measured off Isaac's Robotiq 2F-85 collision shapes; the palm dimensions are not measured.
     """
 
     # Measured off the 2F-85's own collision shapes in this frame, swept across the whole aperture
@@ -1565,7 +1562,7 @@ class GraspingContainerConfig(StrictModel):
             "family's ranking gap from 15 objects to 1 (to 0 with the fused neighbour cloud as "
             "well). It converts 'the ranker chose a grasp that hits the wall' into 'the ranker "
             "offered nothing', which is neutral in a simulator and is the difference between a "
-            "retry and a collision on real hardware. That is the reason to set it."
+            "retry and a collision on real hardware."
         ),
     )
     wall_thickness_mm: float = Field(
@@ -1722,7 +1719,8 @@ class GraspingDeepRankerConfig(StrictModel):
 
 
 class GraspingSupportConfig(StrictModel):
-    """Where the surface is that the parts stand on, the input to the table-clearance check.
+    """Where the surface is that the parts stand on, the input the table-clearance check has
+    never been given.
 
     ``compute()`` takes a ``support_plane`` and ``collision_checker.py`` skips the whole check
     without one: with none passed, ``rejected_table`` was 0 in 2128 of 2128 telemetry lines while
@@ -1826,8 +1824,7 @@ class GraspingGeometryStageConfig(StrictModel):
 
     Per family, top-1 against the silhouette stage: packed 26.6 -> 44.1 %, pile 11.1 -> 35.2 %,
     sparse 30.3 -> 55.6 %. ``bin`` went 12.5 -> 8.3 % on this subset (n=24, two objects against
-    three); on the full 270-scene set (n=152) the same stage measured 27.6 % against 14.5 %. The
-    small-sample number is reported rather than dropped.
+    three); on the full 270-scene set (n=152) the same stage measured 27.6 % against 14.5 %.
 
     It needs a BASE-frame support plane and a CAMERA->BASE transform. Without both it cannot place
     the table, so it does not run and the silhouette stage stands: a runner that builds the service
@@ -1891,8 +1888,8 @@ class RobotGraspingConfig(StrictModel):
     layer imports no runtime modules.
     """
 
-    # Stable :class:`GraspMode` name resolved at runtime. One of: "easy", "auto", "closed_loop",
-    # "dense_clutter", "dense_autonomous".
+    # A stable :class:`GraspMode` name resolved at runtime: "easy", "auto", "closed_loop",
+    # "dense_clutter" or "dense_autonomous".
     default_mode: str = Field(default="auto", min_length=1)
     # Upper bound on autonomous attempts per pick() call.
     max_attempts: int = Field(default=5, ge=1, le=50)
@@ -1904,11 +1901,11 @@ class RobotGraspingConfig(StrictModel):
     #:
     #: ``deep`` is the learned 6-DoF generator. It replaces the analytic proposal stage: the factory
     #: returns one generator or the other, and the deep decoder seeds only from its own graspability
-    #: head. The deep path has no rejection tail of its own; the table check, the gripper-collision
-    #: envelope, the antipodal test and the corridor filter all live in the analytic generator, and
-    #: extracting them into a stage both generators run is an open build. The safety preflight is
-    #: unaffected: it sits at the arm and gates the joint target whatever proposed it, so a deep
-    #: candidate meets exactly the same fail-closed guards.
+    #: head, not from the analytic candidates. It has no rejection tail of its own; the table check,
+    #: the gripper-collision envelope, the antipodal test and the corridor filter all live in the
+    #: analytic generator, and extracting them into a stage both generators run is an open build.
+    #: The safety preflight is unaffected: it sits at the arm and gates the joint target whatever
+    #: proposed it, so a deep candidate meets exactly the same fail-closed guards.
     #:
     #: The default stays ``geometric`` until the learned one clears its pre-registered bar: beat
     #: sfe_fused top-1 55.9 % on the eval-grasps ladder, plus on-box dense-gate parity. Selecting
@@ -1991,23 +1988,24 @@ class RobotGraspingConfig(StrictModel):
         default_factory=GraspingDeepGeneratorConfig,
         description=(
             "The learned 6-DoF grasp generator, selected by `calculator: deep`. Inert while "
-            "`calculator` is 'geometric', which is the default, so this block changes "
-            "nothing until "
-            "a cell deliberately switches its generator."
+            "`calculator` is 'geometric', which is the default, so this block changes nothing "
+            "until a cell deliberately switches its generator."
         ),
     )
     deep_ranker: GraspingDeepRankerConfig = Field(
         default_factory=GraspingDeepRankerConfig,
         description=(
             "The learned grasp ranker in shadow mode. Default off; enabling it adds telemetry and "
-            "changes no decision; see the class docstring for what it measured before being wired."
+            "changes no decision. See the class docstring for what it measured."
         ),
     )
     support: GraspingSupportConfig = Field(
         default_factory=GraspingSupportConfig,
         description=(
-            "Where the parts stand. Feeds the calculator's support_plane, which nothing has ever "
-            "passed; see the class docstring for the measurement behind the defaults."
+            "Where the parts stand. Nothing passes the calculator a support_plane today, and "
+            "without one the table-clearance check is skipped; see the class docstring for "
+            "the measurement behind "
+            "the defaults."
         ),
     )
     geometry: GraspingGeometryStageConfig = Field(
@@ -2029,7 +2027,8 @@ class RobotGraspingConfig(StrictModel):
     #: then read back by nothing. Turning one on changes what the cell reports about itself and not
     #: one thing about what it does.
     #:
-    #: Measured on-box four ways (see docs/grasping-config-reference.md section 6.1):
+    #: Measured on-box in a 17-run campaign, four ways (see
+    #: docs/grasping-config-reference.md section 6.1):
     #: ``apply_orchestrator_overlays`` installs 13 carriers and none of these blocks is among them;
     #: repo-wide nothing reads ``effective_config.feasibility`` / ``.corridor`` / ``.ordering``
     #: outside the file that writes them and the one that serialises them; feasibility's real
@@ -2044,10 +2043,15 @@ class RobotGraspingConfig(StrictModel):
     UNWIRED_SWITCHES: ClassVar[dict[str, str]] = {
         # `hard_reject_enabled` is what lets the occlusion score refuse a candidate rather than
         # only demote it, so it stays listed until the score itself is trusted: one run that moves
-        # both the ranking and the rejection answers neither. The blocks already wired reach the
-        # calculator per call from the orchestrator; see the on-box regression warning in
-        # builders.py before enabling feasibility.
+        # both the ranking and the rejection answers neither. `feasibility.*` and
+        # `occlusion.directional_enabled` are wired instead, supplied per call from the
+        # orchestrator rather than as a constructor argument; see the on-box regression warning
+        # in builders.py before enabling feasibility.
         "occlusion.hard_reject_enabled": "occlusion",
+        # `ordering.*` is wired by the other route: the orchestrator carries the ordering path
+        # (`target_ordering` plus the selector at pick_loop.py:1801), and
+        # `apply_orchestrator_overlays` maps the block onto `TargetOrderingConfig`
+        # field-for-field under its `apply_modes`.
     }
 
     @model_validator(mode="after")

@@ -8,16 +8,14 @@ from src.config.schema.camera import SingleDeviceRigConfig
 from src.camera.setup.image_taking.frames import StereoFrame
 from src.camera.setup.quality import configure_camera_for_quality
 
-# ------------------------------------------------------------------
-# Single-device stereo streamer (side-by-side / top-bottom)
-# ------------------------------------------------------------------
 
 class SingleDeviceStreamer:
-    """Runtime streamer for a single stereo camera that outputs one combined frame
-    (side-by-side or top-bottom), split into left/right images.
+    """Streams both eyes from one device that delivers them in a single frame.
 
-    Quality settings come from configure_camera_for_quality(). Optional cropping is
-    applied before the split, and each eye can be resized to the target resolution.
+    ``layout`` says whether the two eyes sit side by side or one above the other.
+    Quality settings come from ``configure_camera_for_quality``. The configured crop is
+    applied before the split, and each eye is resized to ``per_eye_frame_size`` when
+    ``allow_resize`` permits it.
     """
 
     def __init__(self, config: SingleDeviceRigConfig):
@@ -86,10 +84,10 @@ class SingleDeviceStreamer:
     # ------------------------------------------------------------------
 
     def grab(self) -> StereoFrame:
-        """Grab a combined frame, split it, and return left/right images.
+        """Grab one combined frame, split it, and return both eyes as a StereoFrame.
 
-        Returns:
-            StereoFrame with .left and .right BGR images.
+        Raises RuntimeError if the device is not open, or if the grab or the retrieve
+        fails.
         """
         if not self.is_opened():
             raise RuntimeError("Device is not open. Call open() first.")
@@ -166,8 +164,8 @@ class SingleDeviceStreamer:
         left: np.ndarray,
         right: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
-        # per_eye_frame_size is (width, height), the order cv.resize below wants.
-        # Do not swap.
+        # per_eye_frame_size is (width, height), which is the order cv.resize wants.
+        # Do not swap it against the (height, width) that shape[:2] returns.
         tw, th = self.per_eye_frame_size
 
         def _resize_if_needed(img: np.ndarray, side: str) -> np.ndarray:

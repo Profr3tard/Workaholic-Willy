@@ -9,11 +9,11 @@ from src.camera.setup.quality import configure_camera_for_quality
 
 
 class WebcamPairStreamer:
-    """Runtime streamer for a webcam stereo pair.
+    """Streams a stereo pair from two separate USB cameras.
 
-    Opens two USB cameras, applies identical quality settings via
-    configure_camera_for_quality(), and captures both with grab before retrieve to
-    minimise the temporal offset between the eyes.
+    Both cameras get the same settings from ``configure_camera_for_quality``, and a pair
+    whose resolution or frame rate disagrees is refused. Capture grabs from both cameras
+    before either is retrieved, which keeps the offset between the two exposures small.
     """
 
     def __init__(self, config: WebcamPairRigConfig):
@@ -27,7 +27,8 @@ class WebcamPairStreamer:
         self._cap_left: cv.VideoCapture | None = None
         self._cap_right: cv.VideoCapture | None = None
 
-        # Resolve camera IDs
+        # Configured ids win. Otherwise scan, and take the last two indices that
+        # returned a frame as left and right.
         if config.cam_left_id is not None and config.cam_right_id is not None:
             self._left_id = int(config.cam_left_id)
             self._right_id = int(config.cam_right_id)
@@ -44,7 +45,10 @@ class WebcamPairStreamer:
     # ------------------------------------------------------------------
 
     def open(self) -> None:
-        """Open both cameras and apply quality settings."""
+        """Open both cameras and apply quality settings.
+
+        Either camera failing to open releases both and raises OSError.
+        """
         self._cap_left = cv.VideoCapture(self._left_id, self.backend)
         self._cap_right = cv.VideoCapture(self._right_id, self.backend)
 
@@ -80,13 +84,9 @@ class WebcamPairStreamer:
     # ------------------------------------------------------------------
 
     def grab(self) -> StereoFrame:
-        """Grab + retrieve a synchronised stereo frame pair.
+        """Grab one frame from each camera and return the two as a StereoFrame.
 
-        Returns:
-            StereoFrame with .left and .right BGR images.
-
-        Raises:
-            RuntimeError: If cameras are not open or frame capture fails.
+        Raises RuntimeError if the cameras are not open, or if a grab or a retrieve fails.
         """
         if not self.is_opened():
             raise RuntimeError("Cameras are not open. Call open() first.")

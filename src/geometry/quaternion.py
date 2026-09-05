@@ -4,13 +4,13 @@ Convention:
 
 * Order is XYZW.
 * Magnitude is unit length.
-* Canonical sign has ``w >= 0``. ``q`` and ``-q`` are the same rotation, and
+* Canonical sign has ``w >= 0``. ``q`` and ``-q`` are the same rotation;
   :func:`canonicalise` enforces the sign.
-* Composition order: ``r_total = q1 * q2`` means rotate by ``q2`` first and by
-  ``q1`` second, the same order as homogeneous matrix multiplication.
+* Composition ``r_total = q1 * q2`` rotates by ``q2`` first and by ``q1``
+  second, the same order as homogeneous matrix multiplication.
 
-This module depends only on :mod:`numpy`, which is what keeps the geometry
-package free of OpenCV, SciPy and vendor imports.
+Imports here stay limited to :mod:`numpy`, so the geometry package carries no
+OpenCV, SciPy or vendor dependency.
 """
 
 from __future__ import annotations
@@ -60,9 +60,10 @@ def conjugate(q: np.ndarray) -> np.ndarray:
 
 
 def multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
-    """Hamilton product ``q1 * q2`` in XYZW, scalar-last order.
+    """Hamilton product ``q1 * q2`` in scalar-last XYZW order.
 
-    Applying ``q1 * q2`` to a vector equals applying ``q2`` and then ``q1``.
+    Applied to a vector, ``q2`` rotates first and ``q1`` second. The result is
+    canonical.
     """
     a = validate_quaternion_xyzw(q1)
     b = validate_quaternion_xyzw(q2)
@@ -98,8 +99,8 @@ def from_rotation_matrix(R: np.ndarray) -> np.ndarray:
     except InvalidMatrixError as exc:
         raise InvalidQuaternionError(str(exc)) from exc
 
-    # Branch on the largest divisor so the square root stays well conditioned
-    # for every input rotation, rather than dividing by a value near zero.
+    # Take the branch with the largest divisor, so no component is recovered by
+    # dividing through a value near zero.
     trace = float(np.trace(arr))
     if trace > 0.0:
         scale = float(np.sqrt(trace + 1.0) * 2.0)
@@ -163,9 +164,9 @@ def matrix_to_rotation_vector(R: np.ndarray) -> np.ndarray:
 
 
 def from_axis_angle(rvec: np.ndarray) -> np.ndarray:
-    """Convert an axis-angle vector ``rvec`` (rad, magnitude is the angle) to XYZW.
+    """Convert an axis-angle vector in radians to a canonical XYZW quaternion.
 
-    The zero vector maps to the identity quaternion.
+    The magnitude of ``rvec`` is the angle. The zero vector maps to identity.
     """
     arr = np.asarray(rvec, dtype=np.float64).reshape(-1)
     if arr.shape != (3,):
@@ -202,10 +203,10 @@ def to_axis_angle(q: np.ndarray) -> np.ndarray:
 
 
 def from_euler(angles_rad: np.ndarray, *, order: str = "xyz") -> np.ndarray:
-    """Convert XYZ Euler angles (rad) to a canonical XYZW quaternion.
+    """Convert XYZ Euler angles in radians to a canonical XYZW quaternion.
 
-    Only ``order='xyz'`` is supported; anything else raises
-    ``InvalidQuaternionError``.
+    The x angle applies first, then y, then z. Only ``order='xyz'`` is
+    supported; any other value raises ``InvalidQuaternionError``.
     """
     arr = np.asarray(angles_rad, dtype=np.float64).reshape(-1)
     if arr.shape != (3,):
@@ -223,14 +224,13 @@ def from_euler(angles_rad: np.ndarray, *, order: str = "xyz") -> np.ndarray:
 
 
 def to_euler(q: np.ndarray, *, order: str = "xyz") -> np.ndarray:
-    """Convert a unit XYZW quaternion to XYZ Euler angles (rad).
+    """Convert a unit XYZW quaternion to XYZ Euler angles in radians.
 
-    Only ``order='xyz'`` is supported. At gimbal lock, where the pitch is near
-    plus or minus 90 degrees and ``sy < 1e-12``, the decomposition is
-    ambiguous: this collapses the third angle to ``z = 0`` and folds the
-    rotation into ``x``. The angles still reconstruct the same rotation through
-    :func:`from_euler`, but the individual x and z split is not recoverable at
-    the singularity.
+    Only ``order='xyz'`` is supported. At gimbal lock, pitch near plus or minus
+    90 degrees and ``sy < 1e-12``, the decomposition is ambiguous: ``z``
+    collapses to 0 and the rotation folds into ``x``. The angles still
+    reconstruct the same rotation through :func:`from_euler`, but the x and z
+    split is not recoverable at the singularity.
     """
     qv = validate_quaternion_xyzw(q)
     if order.lower() != "xyz":
@@ -253,7 +253,7 @@ def angle_between(q1: np.ndarray, q2: np.ndarray) -> float:
     """Return the geodesic angle in radians, from 0 to pi, between two rotations."""
     a = validate_quaternion_xyzw(q1)
     b = validate_quaternion_xyzw(q2)
-    # The absolute value folds q and -q together, which are the same rotation.
+    # q and -q are the same rotation, so the sign is folded out of the product.
     dot = abs(float(np.dot(a, b)))
     dot = min(1.0, max(-1.0, dot))
     return 2.0 * float(np.arccos(dot))

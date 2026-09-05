@@ -1,15 +1,15 @@
 """Low-level validators used across the geometry package.
 
 These helpers raise the typed exceptions from :mod:`src.geometry.exceptions`,
-so a caller can except on a single base class. They never silently coerce
-data: invalid input is always reported.
+so a caller can except on a single base class. Invalid input is always
+reported, never quietly repaired.
 
 Numerics contract:
 
-* All vectors and matrices are coerced to ``float64``.
-* Quaternions are in XYZW order. A unit-length tolerance of ``1e-6`` applies,
-  and vectors outside it are rejected. Call :func:`normalise_quaternion` first
-  if normalisation is what you want.
+* Vectors and matrices are coerced to ``float64``.
+* Quaternions are XYZW order and must be unit length within ``1e-6``; anything
+  outside that is rejected. Call :func:`normalise_quaternion` first when
+  normalisation is intended.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from .exceptions import (
     InvalidTransformError,
 )
 
-# Tight on purpose: runtime data reaching these validators is already clean.
+# Tolerances stay tight; runtime data should already be clean.
 QUATERNION_UNIT_TOL: float = 1e-6
 ROTATION_DET_TOL: float = 1e-6
 ROTATION_ORTHONORMAL_TOL: float = 1e-6
@@ -36,8 +36,8 @@ def as_float64_vector(value: object, expected_len: int, *, name: str) -> np.ndar
     ------
     InvalidPoseError
         If the shape is wrong or any element is non-finite. The type is
-        deliberately generic at this layer; the ``Pose`` and ``Transform``
-        validators re-raise with their own types where that matters.
+        intentionally generic at this layer; the ``Pose`` and
+        ``Transform`` validators re-raise with their own types when needed.
     """
     arr = np.asarray(value, dtype=np.float64)
     if arr.shape != (expected_len,):
@@ -62,8 +62,7 @@ def validate_quaternion_xyzw(
 ) -> np.ndarray:
     """Validate a (4,) XYZW quaternion that is unit length within ``tol``.
 
-    Use :func:`normalise_quaternion` for best-effort normalisation instead of
-    strict validation.
+    :func:`normalise_quaternion` normalises instead of rejecting.
     """
     arr = np.asarray(value, dtype=np.float64)
     if arr.shape != (4,):
@@ -96,10 +95,10 @@ def normalise_quaternion(
     Parameters
     ----------
     canonicalise:
-        When ``True``, the default, flip the sign of the quaternion whenever
-        its scalar component (``w``, index 3) is negative. ``q`` and ``-q``
-        represent the same rotation, so canonicalising is what makes equality
-        and hashing well defined.
+        When ``True``, the default, negate the quaternion whenever its scalar
+        component (``w``, index 3) is negative. ``q`` and ``-q`` are the same
+        rotation, so that sign rule is what makes equality and hashing well
+        defined.
     """
     arr = np.asarray(value, dtype=np.float64)
     if arr.shape != (4,):
@@ -127,9 +126,9 @@ def validate_homogeneous_matrix(
 ) -> np.ndarray:
     """Validate a 4x4 rigid transform matrix.
 
-    Checked: the shape is exactly ``(4, 4)``, all entries are finite, the
-    bottom row is ``[0, 0, 0, 1]`` within ``det_tol``, and the rotation block
-    is orthonormal with determinant ``+1`` within ``det_tol``.
+    The shape is exactly ``(4, 4)``, every entry is finite, the bottom row is
+    ``[0, 0, 0, 1]`` within ``det_tol``, and the rotation block passes
+    :func:`validate_rotation_matrix` at that ``det_tol``.
     """
     arr = np.asarray(value, dtype=np.float64)
     if arr.shape != (4, 4):
@@ -180,10 +179,12 @@ def validate_frames_compatible(
 ) -> None:
     """Check that a transform chain joins, for Transform.compose and apply_pose.
 
+    ``op`` names the operation in the error message.
+
     Raises
     ------
     InvalidTransformError
-        If the two frames differ, naming both sides.
+        If the frames differ, naming both sides.
     """
     if a_to != b_from:
         raise InvalidTransformError(

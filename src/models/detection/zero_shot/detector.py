@@ -27,19 +27,13 @@ from src.utility import (
 
 
 class GroundingDinoObjectDetector:
-    """
-    Object detector using GroundingDINO for text-guided detection.
-    Parameters:
-        - model_id : Hugging Face model ID (e.g., "ShilongLi/groundingdino-v1.3")
-        - model_path : Local path to model files (if local=True)
-        - threshold : Confidence threshold for detections
-        - local : Whether to load model from local path
-        - debug_images : Whether to save debug images with detections drawn
+    """Text-guided object detection with GroundingDINO, an open-vocabulary detector.
 
-    Output:
-        - Bounding box (pixel coordinates)
-        - Box center (pixel coordinates)
-        - Detected label
+    ``config`` supplies the weights source, ``model_id`` (a Hugging Face Hub id such as
+    "ShilongLi/groundingdino-v1.3") or ``model_path`` (a local directory), selected by
+    ``local``, plus ``threshold``, the confidence a box must clear. ``debug_images`` writes
+    an annotated copy of every frame :meth:`detect` handles. Results are :class:`Detection`
+    objects carrying the grounded label and a box and center in pixels of the input image.
     """
 
     def __init__(self, config: ObjectDetectorConfig, debug_images: bool = False):
@@ -56,13 +50,11 @@ class GroundingDinoObjectDetector:
         source = self.model_path if self.local else self.model_id
         if not source:
             raise ValueError("model_path (local=True) or model_id (local=False) must be set.")
-        # A local path that is not there must say so here, in these words. Left to `from_pretrained`,
-        # a missing directory is taken for a Hub repo id and rejected as one ("OSError: Repo id must
-        # be in the form 'repo_name' or 'namespace/repo_name': 'src/models/detection/model'.
-        # Use `repo_type` argument if needed."), which sends an operator looking for a Hub
-        # misconfiguration that does not exist instead of for weights that were never put where
-        # config says they are. The shipped `model_path` does not exist in a fresh checkout, so this
-        # is the first thing a bring-up hits, not an operator mistake.
+        # A missing local directory has to be named as one here. Left to `from_pretrained`, the
+        # path is taken for a Hub repo id and rejected as one, with an OSError reading "Repo id
+        # must be in the form 'repo_name' or 'namespace/repo_name'", which points at a Hub
+        # misconfiguration instead of at weights that are not where config says they are. The
+        # shipped `model_path` does not exist in a fresh checkout.
         if self.local and not Path(source).is_dir():
             raise FileNotFoundError(
                 f"models.objectdetector.local is true and model_path is {source!r}, but there is no "
@@ -105,15 +97,12 @@ class GroundingDinoObjectDetector:
 
     @torch.inference_mode()
     def detect(self, image: np.ndarray, prompt: str) -> Detection:
-        """
-        Runs text-guided object detection on a BGR image.
+        """Highest-scoring match for ``prompt`` in ``image``, a BGR array as OpenCV delivers it.
 
-        Parameters:
-            image  : Input image as BGR numpy array (from OpenCV).
-            prompt : Natural language description of the target object.
-
-        Returns:
-            Detection with box [x0, y0, x1, y1] in pixels, center, label, score.
+        ``prompt`` is a natural-language description of the target object. Returns one
+        :class:`Detection` with box ``[x0, y0, x1, y1]`` in pixels, center, label and score, and
+        raises ``ValueError`` when nothing clears the threshold; :meth:`detect_all` returns an
+        empty list in that case instead.
         """
         if image is None or image.size == 0:
             raise ValueError("Input image is empty or None.")
@@ -160,11 +149,9 @@ class GroundingDinoObjectDetector:
         label = labels[best_idx]
         score = scores[best_idx]
 
-        # post_process_grounded_object_detection was called without
-        # ``target_sizes`` above, so it returns boxes normalised to [0, 1].
-        # Scaling by the image (width, height) recovers pixel coordinates, checked against
-        # real-hardware output: the scaling is correct. The `_px` values below are pixels
-        # only with the *w/*h, so keep them.
+        # post_process_grounded_object_detection is called above without `target_sizes`, so its
+        # boxes are normalised to [0, 1]. Multiplying by the image (width, height) is what makes
+        # the `_px` values pixels; drop the *w/*h and they stay normalised.
         x0, y0, x1, y1 = [float(c) for c in box]
 
         x0_px, y0_px, x1_px, y1_px = x0 * w, y0 * h, x1 * w, y1 * h
@@ -194,20 +181,20 @@ class GroundingDinoObjectDetector:
 
     @torch.inference_mode()
     def detect_all(self, image: np.ndarray, prompt: str) -> list[Detection]:
-        """Like :meth:`detect` but returns all detections above threshold (not just the argmax).
+        """Every detection above threshold, where :meth:`detect` returns only the argmax.
 
-        For multi-object / clutter selection: each :class:`Detection` carries its own box (pixels),
-        center, label and score. Returns an empty list (not a raise) when nothing clears the
-        threshold, so callers can handle 'no objects' without exception flow.
+        Each :class:`Detection` carries its own box in pixels, center, label and score, which is
+        what clutter and multi-object selection need. Nothing above threshold is an empty list
+        rather than a raise, so a caller handles "no objects" without exception flow.
         """
         if image is None or image.size == 0:
             raise ValueError("Input image is empty or None.")
         if not prompt or not prompt.strip():
             raise ValueError("Prompt must be a non-empty string.")
 
-        # Timed like `detect` is: the backend seam puts every runner on detect_all, so this is the
-        # per-call inference number the system actually produces, and grounding is the most
-        # expensive model in the pick.
+        # Timed as `detect` is: every runner reaches the detector through detect_all, so this is
+        # the per-call inference number the system reports, and grounding is the most expensive
+        # model in a pick.
         started = time.time()
         pil_image = Image.fromarray(bgr_to_rgb(image))
         w, h = pil_image.size
@@ -223,7 +210,7 @@ class GroundingDinoObjectDetector:
             outputs, inputs["input_ids"], threshold=self.threshold
         )
         if not results or len(results[0]["scores"]) == 0:
-            # A call that grounds nothing cost the same inference, so it is timed and logged as well.
+            # Grounding nothing costs a full inference, so the empty case is timed and logged too.
             self.logger.info(f"Inference completed in {time.time() - started:.3f}s, 0 detections")
             return []
         result = results[0]
@@ -235,7 +222,8 @@ class GroundingDinoObjectDetector:
             x0, y0, x1, y1 = [float(c) for c in boxes[i]]
             box_px = [x0 * w, y0 * h, x1 * w, y1 * h]
             s = scores[i]
-            # GroundingDINO can ground a box to an empty/None phrase -> coerce to a non-empty label.
+            # GroundingDINO can ground a box to an empty or None phrase, and `Detection` rejects an
+            # empty label, so the fallback below supplies one.
             lbl = str(labels[i]).strip() if labels[i] is not None else ""
             dets.append(Detection(
                 box=box_px, x_center=(box_px[0] + box_px[2]) / 2, y_center=(box_px[1] + box_px[3]) / 2,
@@ -286,7 +274,8 @@ class GroundingDinoObjectDetector:
             fill="white"
         )
 
-        # Save image with timestamp into the rotated logs/debug/detection bucket.
+        # `debug_dir` caps and rotates the logs/debug/detection bucket at 200 files, so a long run
+        # with debug_images on cannot fill the disk.
         now = datetime.now().strftime("%Y%m%d_%H%M%S")
         file_name = f"detection_debug_{now}.png"
         output_path = debug_dir("detection", max_files=200) / file_name

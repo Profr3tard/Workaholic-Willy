@@ -3,13 +3,13 @@
 Three modes, in increasing order of what they need:
 
     --check                 nothing but the config. Reports whether mediapipe and each `.task`
-                            bundle are actually present, and exits non-zero if not.
-    --frame image           one image file. Detects hands and gestures in image space; needs no
+                            bundle are present, and exits non-zero if not.
+    --frame IMAGE           one image file. Detects hands and gestures in image space; needs no
                             camera, no calibration and no robot.
     --rig RIG_ID            live camera. Adds depth and, given `--transform`, the base frame.
 
-The middle mode exists because the alternative, "it does not work" with a camera, a calibration and
-a robot in the loop, gives an operator no way to tell which of the four things is wrong.
+The middle mode isolates the detector: with a camera, a calibration and a robot in the loop, "it
+does not work" leaves an operator no way to tell which of the four is at fault.
 
 Exit codes: 0 success, 1 nothing detected, 2 a setup problem (missing model, missing extra, bad
 config). A missing hand and a missing model file must not look alike to a script.
@@ -163,10 +163,10 @@ def _observe_frame(config: Any, image_path: str, use_gestures: bool, as_json: bo
 
 
 def _load_transform(path: Optional[str], rig_id: str) -> dict[str, np.ndarray]:
-    """`{rig: 4x4}`, or an empty map when none was given.
+    """`{rig: 4x4}`, or an empty map when no path was given.
 
-    An empty map is honest rather than convenient: `HandFinder` then skips the rig with a warning
-    instead of reporting camera-frame numbers as if they were base-frame ones.
+    On an empty map `HandFinder` skips the rig with a warning rather than reporting camera-frame
+    coordinates as base-frame ones.
     """
     if path is None:
         return {}
@@ -200,16 +200,14 @@ def _locate_on_rig(config: Any, args: argparse.Namespace) -> int:
     observer = (
         build_gesture_recognizer(config.models.gesturedetect) if args.gestures else None
     )
-    # `FrameProvider` wants the list of rigs, so `.rigs` is load-bearing here. Handing it
+    # `FrameProvider` wants the list of rigs, which is what `.rigs` supplies. Handing it
     # `config.camera.cameras`, the `CameraSystemConfig` model, gets past the provider's own
-    # `if not rigs` guard, because a Pydantic model is truthy, and iterating a model then yields
+    # `if not rigs` guard, because a Pydantic model is truthy; iterating a model then yields
     # `('active_mode', 'auto')` pairs, so `rig.rig_id` raises `AttributeError`, which the
-    # `except (FileNotFoundError, ImportError, ValueError)` handler in `main` does not catch. The
-    # command exits 1 with a traceback that reads like "no hand was found".
-    #
-    # This is one of five `FrameProvider` call sites; the others spell it the same way, among them
-    # `cells.py:139`, `real_cell/calibrate.py:193` and `perception/__main__.py:73`, which pass
-    # `list(cfg.camera.cameras.rigs)`. No test imports this module, so this call site is unguarded.
+    # `except (FileNotFoundError, ImportError, ValueError)` handler in `main` does not catch, and
+    # the command exits 1 with a traceback that reads like "no hand was found". The other
+    # `FrameProvider` call sites spell it the same way: `cells.py:139`,
+    # `real_cell/calibrate.py:193` and `perception/__main__.py:73`.
     with FrameProvider(list(config.camera.cameras.rigs)) as provider:
         finder = build_hand_finder(
             config.models.handdetect,
@@ -262,8 +260,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             return _observe_frame(config, args.frame, args.gestures, args.json)
         return _locate_on_rig(config, args)
     except (FileNotFoundError, ImportError, ValueError) as exc:
-        # These three are the setup failures: a missing bundle, a missing extra, a config that
-        # cannot describe the cell. Distinguished from "no hand" by the exit code on purpose.
+        # The three setup failures: a missing bundle, a missing extra, a config that cannot
+        # describe the cell. The exit code keeps them apart from "no hand found".
         print(str(exc), file=sys.stderr)
         return _SETUP_PROBLEM
 

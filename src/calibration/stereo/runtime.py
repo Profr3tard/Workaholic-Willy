@@ -12,6 +12,14 @@ __all__ = ["StereoRigRunTime"]
 
 @dataclass(slots=True)
 class StereoRigRunTime:
+    """One calibrated rig: rectification, disparity, reconstruction, extrinsics.
+
+    Assembled by `StereoRigFactory`. Reconstruction is computed in millimetres and
+    the `unit` argument scales it from there; these methods default to `mm`, where
+    `PointCloudReconstructor` underneath defaults to `cm`. `transform_cam_to_base`
+    raises while the rig has no CAMERA -> BASE matrix.
+    """
+
     config: StereoRigConfig
     calib_result: CalibrationResult
     rectifier: StereoRectifier
@@ -37,6 +45,7 @@ class StereoRigRunTime:
         )
 
     def compute_3d_point_xy(self, rect_left_bgr, rect_right_bgr, x, y, unit: str = "mm"):
+        """3D point at pixel `(x, y)`, which is rounded to the nearest whole pixel."""
         xi, yi = int(round(x)), int(round(y))
         return self.pointcloud.representative_point(
             rect_left_bgr, rect_right_bgr, self.disparity, xi, yi, unit

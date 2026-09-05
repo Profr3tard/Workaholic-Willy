@@ -16,7 +16,7 @@ __all__ = ["ArucoPoseEstimator", "resolve_aruco_dictionary"]
 
 
 def resolve_aruco_dictionary(name: str):
-    """Resolve a dictionary name (``'DICT_5X5_100'`` or ``'5X5_100'``) to a cv2 ArUco dictionary."""
+    """Resolve a dictionary name to a cv2 ArUco dictionary; the ``DICT_`` prefix is optional."""
     d = name.upper().strip()
     if not d.startswith("DICT_"):
         d = "DICT_" + d
@@ -35,7 +35,10 @@ def _rvec_tvec_to_matrix(rvec: np.ndarray, tvec: np.ndarray) -> np.ndarray:
 
 
 class ArucoPoseEstimator:
-    """Detects ArUco markers and returns ``T_cam_to_marker`` 4x4 transforms."""
+    """Detects ArUco markers and returns ``T_cam_to_marker`` 4x4 transforms.
+
+    The translations carry the unit of ``marker_length_mm``, so millimetres.
+    """
 
     def __init__(
         self,
@@ -56,7 +59,8 @@ class ArucoPoseEstimator:
         self.aruco_params.cornerRefinementMethod = cv.aruco.CORNER_REFINE_SUBPIX
         self._detector = cv.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
 
-        # Reusable grayscale buffer for the realtime path.
+        # Grayscale buffer reused across frames; _to_gray reallocates it only
+        # when the frame size changes.
         self._gray: Optional[np.ndarray] = None
 
     def estimate(
@@ -66,17 +70,15 @@ class ArucoPoseEstimator:
         dist_rect: np.ndarray,
         target_id: Optional[int] = None,
     ):
-        """Detect markers and estimate their pose relative to the camera.
+        """Detect markers in a rectified left frame and pose each one.
 
-        Args:
-            rect_left_bgr: rectified left BGR frame.
-            K_rect: rectified intrinsics (3x3). Required.
-            dist_rect: distortion coefficients (zeros for rectified input).
-            target_id: if given, return only that marker's transform (or None).
+        ``K_rect`` is the rectified 3x3 intrinsics and is required; ``dist_rect``
+        is the matching distortion, zeros for input that is already rectified.
 
         Returns:
-            dict[int, 4x4] when ``target_id`` is None; otherwise a single
-            4x4 matrix or ``None`` if the marker was not detected.
+            {marker id: 4x4 ``T_cam_to_marker``} when ``target_id`` is None,
+            otherwise that one marker's matrix, or ``None`` if it was not
+            detected.
         """
         if K_rect is None:
             raise StereoCalibrationError("K_rect is not available (set rectified intrinsics).")
@@ -91,11 +93,10 @@ class ArucoPoseEstimator:
             logger.debug("ArUco: no markers detected.")
             return {} if target_id is None else None
 
-        # cv.aruco.estimatePoseSingleMarkers does not exist in OpenCV >= 4.7 (4.13 is pinned), so
-        # each marker is posed with cv.solvePnP over its known square corners instead, mirroring
-        # willy_sim/hand_eye.py.
+        # OpenCV >= 4.7 has no cv.aruco.estimatePoseSingleMarkers (4.13 is pinned), so each
+        # marker is posed by cv.solvePnP over its square corners, as willy_sim/hand_eye.py does.
         half = self.marker_length / 2.0
-        # cv2.aruco corner order is TL, TR, BR, BL -> object points with the marker +Z out of plane.
+        # cv2.aruco returns corners TL, TR, BR, BL; obj follows that order, marker +Z out of plane.
         obj = np.array(
             [[-half, half, 0.0], [half, half, 0.0], [half, -half, 0.0], [-half, -half, 0.0]],
             dtype=np.float64,
@@ -113,7 +114,6 @@ class ArucoPoseEstimator:
             return result
         return result.get(int(target_id))
 
-    # ------------------------------------------------------------------
     def _to_gray(self, bgr: np.ndarray) -> np.ndarray:
         if bgr.ndim == 2:
             return bgr

@@ -12,6 +12,13 @@ __all__ = ["CalibrationResult", "StereoRigConfig"]
 
 @dataclass(frozen=True, slots=True)
 class StereoRigConfig:
+    """Where one rig's calibration lives and how to recompute it.
+
+    ``stereomap_file`` is loaded when it exists; otherwise ``left_glob`` and
+    ``right_glob`` name the ChArUco image pairs a fresh calibration is computed
+    from and written back to that same path. See ``StereoRigFactory``.
+    """
+
     stereomap_file: str | Path
     left_glob: str
     right_glob: str
@@ -27,14 +34,15 @@ class StereoRigConfig:
 
 @dataclass(frozen=True, slots=True)
 class CalibrationResult:
-    """Stereo calibration outputs.
+    """Stereo calibration outputs, validated and frozen on construction.
 
     The small per-camera parameters (intrinsics ``camL``/``camR``, distortion
     ``distL``/``distR``, rectification rotations ``rectL``/``rectR`` and
     projections ``projL``/``projR``, plus ``Q``) are the source of truth and
     the only fields persisted. The per-pixel rectification remap tables and the
     rectified intrinsics are derived on construction, so a megabyte of maps
-    never has to be serialised.
+    never has to be serialised. Every array is coerced to contiguous float64,
+    checked for shape and finiteness, and then made read-only.
     """
 
     camL: np.ndarray
@@ -84,7 +92,8 @@ class CalibrationResult:
             array.setflags(write=False)
             object.__setattr__(self, name, array)
 
-        # Derive the rectification remap tables + rectified intrinsics.
+        # Remap tables in fixed-point CV_16SC2, the format cv.remap consumes in
+        # StereoRectifier.
         size = (width, height)
         mapL_x, mapL_y = cv.initUndistortRectifyMap(self.camL, self.distL, self.rectL, self.projL, size, cv.CV_16SC2)
         mapR_x, mapR_y = cv.initUndistortRectifyMap(self.camR, self.distR, self.rectR, self.projR, size, cv.CV_16SC2)

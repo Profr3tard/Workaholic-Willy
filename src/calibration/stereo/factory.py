@@ -25,11 +25,18 @@ if TYPE_CHECKING:  # pragma: no cover (typing only)
 __all__ = ["StereoRigFactory"]
 
 # The injected `self.logger` belongs to the owning rig (StereoCam3D) and keeps its existing
-# lines; this module logger is the calibration package's own trail, carrying the timings,
-# sizes and artifact provenance you want when a rig comes up with the wrong geometry.
+# lines. This module logger is the calibration package's own trail: the calibration timings,
+# artifact sizes and provenance a rig with the wrong geometry is diagnosed from.
 logger = create_logger("StereoRigFactory", STEREO_FACTORY_LOG_FILE, log_dir=CALIBRATION_LOG_DIR)
 
 class StereoRigFactory:
+    """Builds one `StereoRigRunTime` per rig configuration.
+
+    The ChArUco board geometry and the stereo matcher configuration are fixed per
+    factory and shared by every rig it builds; only the stereomap path and the
+    image globs come from the individual `StereoRigConfig`.
+    """
+
     def __init__(
         self,
         squares_x,
@@ -49,6 +56,13 @@ class StereoRigFactory:
         self.repository = StereoRigRepository()
 
     def create(self, config: StereoRigConfig, frame_size) -> StereoRigRunTime:
+        """Assembles rectifier, disparity, reconstruction and extrinsics for one rig.
+
+        The extrinsics transformer is only filled when the stereomap carried a
+        CAMERA -> BASE matrix; otherwise it stays empty and
+        `StereoRigRunTime.transform_cam_to_base` raises until `set_extrinsics` is
+        called.
+        """
         calib_result, extrinsics = self._load_or_calibrate(config, frame_size)
 
         extrinsics_transformer = ExtrinsicsTransformer()
@@ -75,6 +89,12 @@ class StereoRigFactory:
         )
 
     def _load_or_calibrate(self, config: StereoRigConfig, frame_size) -> tuple[CalibrationResult, Optional[object]]:
+        """Loads the stereomap when it exists, calibrating from the image globs otherwise.
+
+        A calibration computed here is written back to the stereomap path without
+        extrinsics, so hand-eye still owes that rig a CAMERA -> BASE matrix. A
+        stereomap that exists but cannot be read is an error, never a recalibration.
+        """
         stereomap_file = Path(config.stereomap_file)
 
         if stereomap_file.exists():

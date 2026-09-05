@@ -45,31 +45,38 @@ class CameraConfig(StrictModel):
 
 
 class ModelsConfig(StrictModel):
-    """ML / CV model configurations."""
+    """The ML and CV model blocks, and the two ways of choosing a perception stack."""
 
     objectdetector: ObjectDetectorConfig
     segmenter: SegmenterConfig
     stt: SpeechToTextConfig
-    #: Optional MediaPipe hand/gesture surface. Standalone: nothing in the grasp pipeline reads
-    #: these. They are read when a caller builds a detector via `src.models.handdetection.factory`,
-    #: or by that package's `python -m` CLI.
+    #: Optional MediaPipe hand and gesture surface. Standalone: nothing in the grasp pipeline
+    #: reads these. Their readers are `src.models.handdetection.factory` and that package's
+    #: `python -m` CLI.
     handdetect: HandDetectConfig = Field(default_factory=HandDetectConfig)
     gesturedetect: GestureDetectConfig = Field(default_factory=GestureDetectConfig)
-    # Perception-backend selection by hand: two independently-settable keys with no cross-check, so
-    # every detector x segmenter combination builds, including ones where the prompt means something
-    # different to each half. `pipeline` below is the cross-checked way to choose a stack.
+    # Perception backends chosen by hand: two independently settable keys with no cross-check, so
+    # every detector x segmenter combination builds, including ones where the prompt means
+    # something different to each half. Kept because assembling a stack by hand is legitimate;
+    # `pipeline` below is the cross-checked way to choose for everyday use.
     detector: Literal["groundingdino", "rtdetr"] = "groundingdino"
     segmenter_backend: Literal["sam2", "oneformer"] = "sam2"
+    #: The closed-set detector block, needed when ``detector`` is ``rtdetr``. Asking for that
+    #: backend without this block refuses the build; there is no fallback to the default backend.
     rtdetr: ObjectDetectorConfig | None = None
+    #: The OneFormer block, needed when ``segmenter_backend`` is ``oneformer``. Asking for that
+    #: backend without this block refuses the build; there is no fallback to the default backend.
     oneformer: OneFormerConfig | None = None
-    #: A perception stack chosen in one line, with the combinations validated fail-closed. ``None``,
-    #: the default, means the two keys above are in force and behaviour is byte-identical to a build
-    #: without this block.
+    #: A perception stack chosen in one line, with the combinations validated fail-closed. Set,
+    #: ``build_perception`` decides the stack from it and the two keys above go unread; a build
+    #: through ``build_object_detector`` or ``build_segmenter`` reads those two keys whatever this
+    #: block says. ``None``, the default, leaves them in force and behaviour is byte-identical to
+    #: a build without this block.
     pipeline: PipelineConfig | None = None
 
 
 class AppConfig(StrictModel):
-    """Root configuration object returned by :func:`config.load_config`."""
+    """Root configuration object returned by :func:`src.config.load_config`."""
 
     camera: CameraConfig
     models: ModelsConfig

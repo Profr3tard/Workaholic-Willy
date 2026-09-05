@@ -1,17 +1,16 @@
 """Find the MediaPipe `.task` bundle, or refuse with something an operator can act on.
 
 MediaPipe is an optional extra and its model files are not in this repository; the operator installs
-both. That makes two failure modes routine rather than exotic, and both of them produce terrible
-messages if left to the libraries:
+both. Left to the libraries, either absence reports poorly:
 
-* mediapipe missing -> `ModuleNotFoundError: No module named 'mediapipe'` at import time, from a
+* mediapipe missing raises `ModuleNotFoundError: No module named 'mediapipe'` at import time, from a
   module the caller never imported by name;
-* the `.task` file missing -> MediaPipe raises from inside its C++ graph, naming neither the config
-  key that supplied the path nor where the file comes from.
+* the `.task` file missing raises from inside MediaPipe's C++ graph, naming neither the config key
+  that supplied the path nor where the file comes from.
 
-So both are checked here, up front, and the message names the config key, the resolved absolute
-path, and the download URL. Fail-closed on purpose: a hand detector that silently does not run is
-worse than one that refuses, because a missing hand reads exactly like an absent hand.
+Both are therefore checked here, up front, and the message names the config key, the resolved
+absolute path and the download URL. The check is fail-closed: a missing hand reads exactly like an
+absent hand, so a detector that silently does not run is worse than one that refuses to start.
 """
 
 from __future__ import annotations
@@ -35,8 +34,8 @@ except ImportError:  # pragma: no cover (only on installs without the optional e
 
 #: Whether the optional extra is importable. Probed once, at import, so a module-level `from ...
 #: import MEDIAPIPE_AVAILABLE` is cheap and every class can guard its constructor the same way.
-#: Assigned once from the branch result rather than inside both branches: a `Final` written twice is
-#: not final, and mypy says so.
+#: Assigned from a single branch result rather than inside both branches, because a `Final` written
+#: twice is not final and mypy rejects it.
 MEDIAPIPE_AVAILABLE: Final[bool] = _available
 
 MEDIAPIPE_INSTALL_HINT: Final[str] = (
@@ -47,8 +46,8 @@ MEDIAPIPE_INSTALL_HINT: Final[str] = (
 def require_mediapipe(what: str) -> None:
     """Raise a named `ImportError` when the optional extra is absent.
 
-    `what` names the thing the caller was trying to build, because "mediapipe is not installed" on
-    its own does not tell an operator which feature they just lost.
+    `what` names the thing the caller was building, because "mediapipe is not installed" on its own
+    does not tell an operator which feature is unavailable.
     """
     if not MEDIAPIPE_AVAILABLE:
         raise ImportError(f"mediapipe is required for {what} but is not installed. {MEDIAPIPE_INSTALL_HINT}")
@@ -57,9 +56,8 @@ def require_mediapipe(what: str) -> None:
 def resolve_model_file(path: str, *, config_key: str, download_url: str) -> str:
     """Return `path` as an absolute string, or raise naming the key, the path and the download.
 
-    Relative paths resolve against the process working directory, the same convention
-    `create_logger` uses for `logs/`, so a config written for one launch directory behaves the same
-    way across the stack.
+    Relative paths resolve against the process working directory, the convention `create_logger`
+    uses for `logs/`, so one config resolves the same way across the stack.
     """
     if not path or not path.strip():
         raise FileNotFoundError(

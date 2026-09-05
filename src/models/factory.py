@@ -1,8 +1,8 @@
 """Config-driven perception-backend factory.
 
-Resolves ``models.detector`` / ``models.segmenter_backend`` to the concrete
-wrapper. The torch-heavy wrappers are imported lazily inside each branch, so this
-module stays importable without torch (e.g. on CI / macOS).
+Resolves ``models.detector`` / ``models.segmenter_backend`` to the concrete wrapper, and
+``models.pipeline`` to a whole assembled stack. The torch-heavy wrappers are imported lazily
+inside each branch, so this module stays importable without torch, on CI or macOS.
 """
 
 from __future__ import annotations
@@ -13,30 +13,28 @@ from src.models.constants import MODELS_FACTORY_LOG_FILE, MODELS_LOG_DIR
 from src.utility.log_cfg import create_logger
 
 if TYPE_CHECKING:  # pragma: no cover (typing only)
-    # The seven fields this module actually reads. `ModelsConfig` satisfies the Protocol
-    # structurally and so does `PerceptionSpec`, which is what lets a caller with no `stt` block
-    # (eleven Whisper fields, ten of them mandatory, none of them read here) reach this builder
-    # without a second builder being written for it.
+    # A structural Protocol over the seven fields this module reads. Both `ModelsConfig` and
+    # `PerceptionSpec` satisfy it, so a caller carrying no `stt` block (eleven Whisper fields, ten
+    # of them mandatory, none read here) reaches this builder without a second builder.
     from src.models.perception_spec import PerceptionFields
 
 __all__ = ["build_object_detector", "build_perception", "build_segmenter"]
 
-#: One line per assembled stack. The leaf wrappers each log their own weights and device, so what is
-#: missing from those files is the composition: three config shapes (legacy keys, a preset, a routed
-#: pipeline) resolve to different stacks, and nothing else says which one this cell got. Stdlib-only,
-#: so the no-torch-at-import promise in the module docstring is unaffected.
+#: One line per assembled stack. The leaf wrappers log their own weights and device, so what this
+#: file adds is the composition: three config shapes (legacy keys, a preset, a routed pipeline)
+#: resolve to different stacks, and nothing else records which one this cell got. Stdlib-only, so
+#: the no-torch-at-import promise in the module docstring holds.
 _LOG = create_logger(__name__, log_file=MODELS_FACTORY_LOG_FILE, log_dir=MODELS_LOG_DIR)
 
-# The refusals are named once because something else has to be able to predict them. The operator
-# console answers "which stack would this cell build" before any weight loads, and
-# `PerceptionSpec.resolve()` reads these constants, so a predicted refusal and a raised one cannot
-# be different sentences.
+# The refusal texts are named once because they have to be predictable: the operator console answers
+# "which stack would this cell build" before any weight loads, through `PerceptionSpec.resolve()`,
+# which reads these constants. A predicted refusal and a raised one are then the same sentence.
 REFUSE_RTDETR_WITHOUT_BLOCK = "models.detector='rtdetr' requires a models.rtdetr config block"
-#: Unreachable from YAML, on purpose. `ModelsConfig` makes `objectdetector` and `segmenter`
-#: required, so neither of these two can fire for a config-driven cell. They exist because
-#: `PerceptionSpec` can legitimately carry `objectdetector=None` (a closed-set stack has no phrase
-#: grounder), and without them that reaches an operator as an AttributeError inside a model wrapper
-#: rather than as a sentence.
+#: Unreachable from YAML, on purpose: `ModelsConfig` makes `objectdetector` and `segmenter`
+#: required, so neither of the next two can fire for a config-driven cell. They exist for
+#: `PerceptionSpec`, which may legitimately carry `objectdetector=None` because a closed-set stack
+#: has no phrase grounder; without them that reaches an operator as an AttributeError inside a
+#: model wrapper rather than as a sentence.
 REFUSE_GROUNDINGDINO_WITHOUT_BLOCK = (
     "this stack grounds with GroundingDINO, so an objectdetector config block is required"
 )
@@ -70,9 +68,9 @@ REFUSE_DEGRADE_WITHOUT_OBJECTDETECTOR = (
 def build_object_detector(models: PerceptionFields, *, debug_images: bool = False) -> Any:
     """Build the configured object detector (``groundingdino`` | ``rtdetr``).
 
-    Both backends expose ``detect(image, prompt)`` / ``detect_all(image, prompt)``
-    returning :class:`~src.models.detection.types.Detection`; RT-DETR
-    ignores an absent prompt and treats a present one as a class-name filter.
+    Both backends expose ``detect(image, prompt)`` and ``detect_all(image, prompt)`` returning
+    :class:`~src.models.detection.types.Detection`. RT-DETR ignores an absent prompt and treats a
+    present one as a class-name filter.
     """
     if models.detector == "rtdetr":
         if models.rtdetr is None:
@@ -91,7 +89,7 @@ def build_object_detector(models: PerceptionFields, *, debug_images: bool = Fals
 def build_segmenter(models: PerceptionFields, *, save_debug: bool = False) -> Any:
     """Build the configured segmenter (``sam2`` | ``oneformer``).
 
-    Both expose ``segment_detection(image_bgr, detection)`` returning
+    Either backend answers ``segment_detection(image_bgr, detection)`` with a
     :class:`~src.models.segmentation.types.SegmentationResult`.
     """
     if models.segmenter_backend == "oneformer":
@@ -111,19 +109,19 @@ def build_segmenter(models: PerceptionFields, *, save_debug: bool = False) -> An
 def build_perception(models: PerceptionFields, *, debug_images: bool = False) -> Any:
     """Build the whole perception stack in one call, from ``models.pipeline`` or the legacy keys.
 
-    This is the one-line API: a caller says which stack it wants and gets something with a
-    ``perceive(image_bgr, prompt)`` method, instead of constructing a detector, constructing a
-    segmenter, and then re-implementing the two-stage chain.
+    The caller names a stack and gets an object with a ``perceive(image_bgr, prompt)`` method,
+    rather than building a detector and a segmenter and chaining them itself.
 
-    With ``models.pipeline`` unset this resolves exactly the same two objects the legacy keys always
-    resolved, wrapped in :class:`TwoStageBackend`.
+    With ``models.pipeline`` unset, this resolves the same two objects the legacy keys resolve
+    through :func:`build_object_detector` and :func:`build_segmenter`, wrapped in
+    :class:`TwoStageBackend`.
     """
     from src.models.perception_backend import TwoStageBackend
 
     pipeline = getattr(models, "pipeline", None)
     if pipeline is None:
-        # Logged before the build, not after: the two constructors below load weights, and a stack that
-        # dies during that load is exactly the one whose composition you want on record.
+        # Logged before the build: the two constructors below load weights, and a stack that dies
+        # during that load is the one whose composition most needs to be on record.
         _LOG.info(
             "building perception: two-stage %s + %s (legacy keys, no models.pipeline)",
             models.detector, models.segmenter_backend,
@@ -133,14 +131,14 @@ def build_perception(models: PerceptionFields, *, debug_images: bool = False) ->
             segmenter=build_segmenter(models, save_debug=debug_images),
         )
 
-    # Every refusal is decided before a single weight is loaded. Building the segmenter first and then
-    # discovering the stack is unbuildable would spend seconds and gigabytes of VRAM on a configuration
-    # that was never going to run, which at a bench reads as "it hung, then failed".
+    # Every refusal below is decided before a single weight is loaded: building the segmenter first
+    # and only then discovering the stack is unbuildable spends seconds and gigabytes of VRAM on a
+    # configuration that cannot run.
     if pipeline.kind == "closed_set" and models.rtdetr is None:
         raise ValueError(REFUSE_CLOSED_SET_WITHOUT_RTDETR)
     if pipeline.kind == "zero_shot" and pipeline.zero_shot.backend == "vlm":
-        # The schema guarantees router.enabled implies backend='vlm', so this is the only place a
-        # routed stack can be built; the un-routed VLM stack is the same call without the split.
+        # The schema guarantees router.enabled implies backend='vlm', so this is the only branch
+        # that can build a routed stack; without the router the same VLM stack is built unsplit.
         if pipeline.router.enabled:
             return _build_routed_backend(models, debug_images=debug_images)
         return _build_vlm_backend(models, debug_images=debug_images)
@@ -170,9 +168,9 @@ def build_perception(models: PerceptionFields, *, debug_images: bool = False) ->
 def _build_routed_backend(models: PerceptionFields, *, debug_images: bool) -> Any:
     """The full pipeline: route each prompt, then run the route it chose.
 
-    Both routes are factories, so neither model is loaded until a prompt actually selects it. They
-    deliberately share one segmenter instance: SAM2 is the mask source on both sides, and building it
-    twice would hold a second copy of the same weights for no reason.
+    Both routes are factories, so neither model loads until a prompt selects it. The two routes
+    share one segmenter instance: SAM2 is the mask source on both sides, and building it twice
+    would hold a second copy of the same weights.
     """
     from src.models.detection.zero_shot.detector import GroundingDinoObjectDetector
     from src.models.perception_backend import TwoStageBackend
@@ -182,17 +180,17 @@ def _build_routed_backend(models: PerceptionFields, *, debug_images: bool) -> An
     if models.objectdetector is None:
         raise ValueError(REFUSE_ROUTER_WITHOUT_OBJECTDETECTOR)
 
-    # Both routes are lazy, so this line is the only place the routed shape appears: the per-route
-    # "building the ... route (first use)" lines arrive later, in the routing log, and possibly never.
+    # Both routes are lazy, so this line is the only record of the routed shape: the per-route
+    # "building the ... route (first use)" lines arrive later, in the routing log, or never.
     _LOG.info(
         "building perception: routed (simple=groundingdino | vlm=%s), shared segmenter=%s, "
         "both routes lazy",
         models.pipeline.zero_shot.vlm.model_id if models.pipeline.zero_shot.vlm else "unconfigured",
         models.pipeline.zero_shot.segmenter,
     )
-    # Built once, up front, and shared: it is needed by whichever route runs first, and both need it.
-    # One segmenter choice covers both routes: masks should not change shape depending on which
-    # grounding model happened to answer, or a pick rate would move for reasons nobody could see.
+    # Built once and shared: whichever route runs first needs it, and both need it. One segmenter
+    # choice covers both routes, so masks do not change shape depending on which grounding model
+    # answered.
     segmenter = _build_named_segmenter(
         models, models.pipeline.zero_shot.segmenter, save_debug=debug_images,
     )
@@ -214,12 +212,12 @@ def _build_vlm_backend(models: PerceptionFields, *, debug_images: bool, segmente
     """The VLM grounding route: Qwen as the detector, SAM2 for masks, guarded by ``on_unavailable``.
 
     The VLM is wired in as a detector, so the same :class:`TwoStageBackend` that runs the phrase
-    route composes it with the same segmenter: there is no second pipeline to keep in step.
+    route composes it with the same segmenter, and there is no second pipeline to keep in step.
 
-    Two things are deliberately lazy. The grounder loads weights on first use unless ``preload`` says
-    otherwise, and the degrade fallback is a factory rather than an instance, so a cell that never
-    degrades never pays for GroundingDINO. What is not lazy is the refusal: an unbuildable
-    configuration is rejected here, before any weight loads.
+    Two things are lazy: the grounder loads weights on first use unless ``preload`` says otherwise,
+    and the degrade fallback is a factory rather than an instance, so a cell that never degrades
+    never loads GroundingDINO. The refusal is not lazy; an unbuildable configuration is rejected
+    here, before any weight loads.
     """
     from src.models.perception_backend import TwoStageBackend
     from src.models.vlm import GuardedVlmBackend, Qwen3VLGrounder
@@ -230,12 +228,11 @@ def _build_vlm_backend(models: PerceptionFields, *, debug_images: bool, segmente
         raise ValueError(REFUSE_VLM_WITHOUT_BLOCK)
     degrade = vlm_cfg.on_unavailable == "degrade"
     if degrade and models.objectdetector is None:
-        # Caught here rather than at the moment of degradation, which would be mid-pick and far too
-        # late to do anything about.
+        # Caught at build time rather than at the moment of degradation, which would be mid-pick.
         raise ValueError(REFUSE_DEGRADE_WITHOUT_OBJECTDETECTOR)
 
-    # `on_unavailable` is the config knob that decides whether a missing VLM refuses the prompt or
-    # silently grounds it with the wrong model, so it belongs on the record next to the checkpoint.
+    # `on_unavailable` decides whether a missing VLM refuses the prompt or silently grounds it with
+    # the wrong model, so it belongs on the record next to the checkpoint.
     _LOG.info(
         "building perception: vlm %s (on_unavailable=%s, preload=%s) + %s",
         vlm_cfg.model_id, vlm_cfg.on_unavailable, vlm_cfg.preload,
@@ -247,9 +244,9 @@ def _build_vlm_backend(models: PerceptionFields, *, debug_images: bool, segmente
         local=vlm_cfg.local,
         preload=vlm_cfg.preload,
     )
-    # The segmenter is a knob here: the VLM supplies boxes, and OneFormer takes a box exactly as SAM2
-    # does, so both mask sources work on this route. A routed stack passes its own instance in so both
-    # routes share one copy of the weights.
+    # The segmenter is configurable here: the VLM supplies boxes, and OneFormer takes a box exactly
+    # as SAM2 does, so both mask sources work on this route. A routed stack passes its own instance
+    # in, so both routes share one copy of the weights.
     if segmenter is None:
         segmenter = _build_named_segmenter(
             models, models.pipeline.zero_shot.segmenter, save_debug=debug_images,
@@ -273,7 +270,10 @@ def _build_vlm_backend(models: PerceptionFields, *, debug_images: bool, segmente
 
 
 def _build_named_segmenter(models: PerceptionFields, backend: str, *, save_debug: bool) -> Any:
-    """Build ``backend`` by name. Shared by the preset path, which does not read the legacy key."""
+    """Build the segmenter named by ``backend``.
+
+    The preset path shares this and does not read the legacy ``models.segmenter_backend`` key.
+    """
     if backend == "oneformer":
         if models.oneformer is None:
             raise ValueError(REFUSE_NAMED_ONEFORMER_WITHOUT_BLOCK)

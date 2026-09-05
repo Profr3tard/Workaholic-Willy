@@ -1,15 +1,12 @@
-""":class:`Transform`, a typed, frame-aware rigid transform.
+""":class:`Transform`, a typed rigid transform between two named frames.
 
-A ``Transform`` carries an explicit direction as a ``from_frame`` and
-``to_frame`` pair. The semantics used across the stack are:
+The direction is explicit in the ``from_frame`` and ``to_frame`` pair: a point
+``p_A`` expressed in ``from_frame`` maps to ``to_frame`` via
+``p_B = R * p_A + t``. So ``Transform(from_frame=A, to_frame=B)`` is the
+homogeneous matrix usually written ``T_B_A``. :meth:`Transform.compose` and
+:meth:`Transform.apply_pose` refuse a frame pair that breaks that reading.
 
-    a point ``p_A`` expressed in ``from_frame`` maps to ``to_frame`` via
-    ``p_B = R * p_A + t``.
-
-So ``Transform(from_frame=A, to_frame=B)`` is the homogeneous matrix usually
-written ``T_B_A``. :meth:`apply_pose` and :meth:`compose` enforce it.
-
-The dataclass is frozen and slotted, all ndarrays are read-only, and the
+The dataclass is frozen and slotted, both ndarrays are read-only, and the
 quaternion is canonicalised on construction so that equality is well defined.
 """
 
@@ -50,12 +47,12 @@ class Transform:
     Attributes
     ----------
     translation_mm:
-        (3,) float64 ndarray, millimetres.
+        (3,) float64 ndarray in millimetres.
     quaternion_xyzw:
-        (4,) float64 unit XYZW quaternion, canonical with ``w >= 0``.
+        (4,) float64 unit XYZW quaternion, canonical sign with ``w >= 0``.
     from_frame, to_frame:
-        Source and target :class:`Frame`. The transform takes data expressed
-        in ``from_frame`` and returns it in ``to_frame``.
+        Source and target :class:`Frame`: the transform consumes data
+        expressed in ``from_frame`` and returns it in ``to_frame``.
     """
 
     translation_mm: np.ndarray
@@ -83,8 +80,8 @@ class Transform:
     def identity(cls, *, from_frame: Frame, to_frame: Frame) -> Transform:
         """Zero translation and identity rotation between two frames.
 
-        ``from_frame`` may equal ``to_frame``, in which case the transform is
-        the literal identity.
+        ``from_frame`` may equal ``to_frame``; the result is then the literal
+        identity transform.
         """
         return cls(
             translation_mm=np.zeros(3, dtype=np.float64),
@@ -101,7 +98,10 @@ class Transform:
         from_frame: Frame,
         to_frame: Frame,
     ) -> Transform:
-        """Build a transform from a validated 4x4 homogeneous matrix (mm)."""
+        """Build a transform from a validated 4x4 homogeneous matrix (mm).
+
+        A matrix carries no frame names, so the caller supplies both.
+        """
         t, q = matrix_to_position_quaternion(T)
         return cls(
             translation_mm=t,
@@ -118,10 +118,9 @@ class Transform:
 
     def inverse(self) -> Transform:
         """Return the inverse transform, with the frames swapped."""
-        # For a rigid transform the inverse rotation is the transpose, which in
-        # quaternion form is the conjugate because the quaternion is unit, and
-        # the inverse translation is that rotation applied to the negated one.
-        from .quaternion import conjugate  # local import, avoids an import cycle
+        # A rigid inverse is R^T and -R^T t. The conjugate stands in for R^T
+        # because the quaternion is unit.
+        from .quaternion import conjugate  # local import, breaks an import cycle
 
         q_inv = conjugate(self.quaternion_xyzw)
         t_inv = -rotate_vector(q_inv, self.translation_mm)
@@ -135,14 +134,15 @@ class Transform:
     def compose(self, other: Transform) -> Transform:
         """Return the composition of ``self`` followed by ``other``.
 
-        If ``self`` runs A to B and ``other`` runs B to C, the result runs A to
-        C, which requires ``self.to_frame == other.from_frame``. It equals the
-        matrix product ``other.to_matrix() @ self.to_matrix()``.
+        ``self`` running A to B and ``other`` running B to C give a transform
+        running A to C, so ``self.to_frame`` must equal ``other.from_frame``.
+        The result equals the matrix product
+        ``other.to_matrix() @ self.to_matrix()``.
         """
         validate_frames_compatible(
             self.to_frame, other.from_frame, op="Transform.compose"
         )
-        # Applying self first and other second gives
+        # Self first, other second:
         #   p_C = R_other (R_self p_A + t_self) + t_other
         #       = (R_other R_self) p_A + (R_other t_self + t_other)
         new_q = multiply(other.quaternion_xyzw, self.quaternion_xyzw)
@@ -162,12 +162,14 @@ class Transform:
     def apply_pose(self, pose: Pose) -> Pose:
         """Re-express ``pose`` from ``self.from_frame`` in ``self.to_frame``.
 
+        The label of ``pose`` carries over to the result.
+
         Raises
         ------
         InvalidTransformError
             If ``pose.frame != self.from_frame``.
         """
-        from .pose import Pose  # local import, avoids an import cycle
+        from .pose import Pose  # local import, breaks an import cycle
 
         validate_frames_compatible(
             self.from_frame, pose.frame, op="Transform.apply_pose"
@@ -181,7 +183,7 @@ class Transform:
             label=pose.label,
         )
 
-    # Equality
+    # Equality, hashing and display
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Transform):
@@ -206,9 +208,8 @@ class Transform:
     def __repr__(self) -> str:  # pragma: no cover (cosmetic)
         x, y, z = self.translation_mm
         qx, qy, qz, qw = self.quaternion_xyzw
-        # ASCII, because this is printed and the console here is cp1252.
         return (
-            f"Transform({self.from_frame.value!r} -> {self.to_frame.value!r}, "
+            f"Transform({self.from_frame.value!r} → {self.to_frame.value!r}, "
             f"t_mm=[{x:.2f}, {y:.2f}, {z:.2f}], "
             f"quat_xyzw=[{qx:.4f}, {qy:.4f}, {qz:.4f}, {qw:.4f}])"
         )

@@ -1,13 +1,12 @@
 """
-Calibration solver layer: pure numpy, with no OpenCV dependency.
+The closed-form calibration solvers: numpy only, with no OpenCV dependency.
 
-Exported classes:
-
-* :class:`~src.calibration.solver.umeyama_rigid.UmeyamaRigid`
-  closed-form SVD rigid point-set registration (dst ~= R @ src + t).
-* :class:`~src.calibration.solver.hand_eye_axxb.HandEyeAXXB`
-  closed-form AX = XB hand-eye calibration (Kronecker and SVD method).
-  Supports both eye-to-hand and eye-in-hand configurations.
+* :class:`~src.calibration.solver.umeyama_rigid.UmeyamaRigid` registers two
+  corresponding point sets by SVD, solving ``dst ~= R @ src + t``.
+* :class:`~src.calibration.solver.hand_eye_axxb.HandEyeAXXB` solves
+  ``AX = XB`` by the Kronecker-product and SVD route. It serves eye-to-hand
+  and eye-in-hand alike; which one it is follows from the ``A`` and ``B`` the
+  caller supplies, not from anything this layer holds.
 """
 
 from __future__ import annotations

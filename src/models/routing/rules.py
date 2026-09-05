@@ -1,20 +1,18 @@
 """The deterministic rules behind :class:`RuleBasedRouter`: vocabulary in, route out, no model.
 
-Rules rather than a classifier, because the router runs before any weights load, on every pick, and
-its mistakes are expensive in both directions: a false simple grasps the wrong object, a false VLM
-costs seconds and VRAM. A rule set is auditable, in that when it is wrong you can see exactly which
-word did it, and it is free. The :class:`~.decision.PromptRouter` seam exists for the day a learned
-judge earns its place with measurements.
+The router runs before any weights load and on every pick, so it stays free and auditable: when a
+route is wrong, the word that caused it is in one of the vocabularies below. A mistake costs in both
+directions, a false simple grasping the wrong object and a false VLM costing seconds and VRAM. The
+:class:`~.decision.PromptRouter` seam is where a learned judge would take over.
 
-The order matters because several rules can fire on one prompt ("nicht der kaputte Würfel" is
-non-English and negated and a state word). The first match wins, and the order runs most-specific
-first, so the reason an operator sees is the most informative one available rather than an accident.
+Several rules can fire on one prompt ("nicht der kaputte Würfel" is non-English, negated and a state
+word). The first match wins and the order is most-specific first, so the reason an operator sees is
+the most informative one available rather than an accident.
 
-The vocabularies are English and German only, German because that is the language the cell is
-operated in. Any other language is detected only if it carries non-ASCII letters, so a non-ASCII-free
-prompt in, say, Dutch is routed simple and grounds badly. That is a deliberate limit: widening it
-means either a language-ID model (a weight load to decide whether to load weights) or a vocabulary
-per language, and neither is justified before the second operator language exists.
+The vocabularies are English and German, the languages the cell is operated in. Any other language is
+detected only through non-ASCII letters, so an ASCII-only prompt in, say, Dutch routes simple and
+grounds badly. Widening that needs either a language-ID model, which is a weight load to decide
+whether to load weights, or a vocabulary per language.
 """
 
 from __future__ import annotations
@@ -26,28 +24,26 @@ from .decision import PromptSignals, Route, RouteDecision, RouteReason
 
 __all__ = ["RuleBasedRouter", "analyse", "route", "MAX_SIMPLE_WORDS", "MULTI_ATTRIBUTE_THRESHOLD"]
 
-#: Past this many words a prompt has stopped being a noun phrase and started being an instruction.
-#: Judgement, not measurement, as the module docstring of :mod:`.decision` says. Six covers every
-#: realistic target description in this cell ("the blue plastic box" is four); "pick up the thing i
-#: pointed at before" is eight and is not a noun phrase.
+#: Past this many words a prompt is an instruction rather than a noun phrase. Judgement, not
+#: measurement, as :mod:`.decision` says. Six covers the target descriptions used in this cell ("the
+#: blue plastic box" is four); "pick up the thing i pointed at before" is eight.
 MAX_SIMPLE_WORDS = 6
 
 #: How many attributes before binding them becomes the hard part. GroundingDINO is reliable on "small
-#: red cube"; it degrades when the phrase carries enough modifiers that which-adjective-goes-with-which
-#: -noun starts to matter. Set at 3 deliberately: 2 would route most ordinary prompts to the VLM and
-#: throw away the fast path's whole reason for existing.
+#: red cube" and degrades once the phrase carries enough modifiers that which-adjective-goes-with-
+#: which-noun starts to matter. At 2 most ordinary prompts would take the VLM route and the fast path
+#: would carry nothing.
 MULTI_ATTRIBUTE_THRESHOLD = 3
 
 # --- vocabularies ---------------------------------------------------------------------------------
-# Tokens that are unambiguously German. Ambiguous ones are excluded on purpose: "die" is a German
-# article and an English verb, "in"/"an"/"so"/"war" collide too. A false NON_ENGLISH silently doubles
-# the cost of every English pick, so this set only holds tokens with no English reading at all.
+# Tokens that are unambiguously German. Ambiguous ones are excluded: "die" is a German article and an
+# English verb, and "in", "an", "so" and "war" collide too. A false NON_ENGLISH silently doubles the
+# cost of every English pick, so this set holds only tokens with no English reading at all.
 _GERMAN_MARKERS = frozenset({
     "der", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer", "eines",
     "und", "oder", "nicht", "kein", "keine", "keinen", "alle", "jeder", "jede", "jedes",
     "welche", "welcher", "welches", "welchen", "mit", "ohne", "auf", "unter", "neben", "hinter",
-    # "war", "hat" and "leg" are German words and ordinary English ones ("the war memorial"), so they
-    # are deliberately absent. This set stays strictly free of English readings.
+    # "war", "hat" and "leg" are absent: each is also an ordinary English word ("the war memorial").
     "zwischen", "links", "rechts", "oben", "unten", "ist", "sind", "waren", "haben",
     "greif", "greife", "nimm", "hole", "lege", "bitte", "dann", "noch", "auch",
     "kaputt", "kaputte", "kaputten", "kaputter", "beschaedigt", "beschaedigte", "defekt", "defekte",
@@ -75,8 +71,8 @@ _COMPARATIVE = frozenset({
     "largest", "smallest", "biggest", "tallest", "shortest", "longest", "widest", "narrowest",
     "heaviest", "lightest", "nearest", "closest", "furthest", "farthest", "leftmost", "rightmost",
     "topmost", "larger", "smaller", "bigger", "taller", "shorter", "longer", "heavier", "lighter",
-    # "next" is absent: on its own it is an ordinal, but "next to" is spatial, and the bigram is the
-    # commoner phrasing at a bench. It is handled in _SPATIAL_PHRASES instead.
+    # "next" is absent: alone it is an ordinal, while "next to" is spatial and the commoner phrasing
+    # at a bench, so the bigram is handled in _SPATIAL_PHRASES.
     "nearer", "closer", "most", "least", "first", "last",
     "groesste", "groessten", "kleinste", "kleinsten", "hoechste", "laengste", "kuerzeste",
     "schwerste", "leichteste", "naechste", "vorderste", "hinterste", "oberste", "unterste",
@@ -88,8 +84,8 @@ _SPATIAL = frozenset({
     "ueber", "unter", "hinter", "neben", "zwischen", "innerhalb", "ausserhalb", "vor", "darunter",
     "darauf", "daneben", "dahinter", "gegenueber",
 })
-#: Spatial relations that only exist as several words. Matched against the joined token stream, because
-#: their parts are individually harmless: "next" is an ordinal, "front" and "top" are nouns.
+#: Spatial relations that exist only as several words, matched against the joined token stream: their
+#: parts are individually harmless, since "next" is an ordinal and "front" and "top" are nouns.
 _SPATIAL_PHRASES = (
     "next to", "in front of", "on top of", "close to", "far from", "away from", "to the left of",
     "to the right of",
@@ -101,9 +97,9 @@ _QUANTIFIER = frozenset({
 })
 _CONJUNCTION = frozenset({"and", "or", "plus", "then", "also", "und", "oder", "sowie", "dann", "auch"})
 
-#: Attribute-bearing modifiers the simple path does handle individually. Counting them is only about
-#: how many must be bound at once, so this list is colours + sizes + common shapes/materials rather
-#: than an attempt at a full adjective lexicon.
+#: Attribute-bearing modifiers the simple path handles individually. Only how many must be bound at
+#: once matters here, so the set is colours, sizes and common shapes and materials rather than a full
+#: adjective lexicon.
 _ATTRIBUTES = frozenset({
     "red", "green", "blue", "yellow", "orange", "purple", "pink", "brown", "black", "white", "grey",
     "gray", "silver", "golden", "transparent", "shiny", "matte", "striped", "spotted",
@@ -128,8 +124,7 @@ def _tokens(prompt: str) -> tuple[list[str], bool]:
     """``(folded lowercase words, sawNonAscii)``.
 
     The non-ASCII flag is the only cross-language signal here: a prompt carrying accented letters is
-    not English, whatever language it actually is. It is computed before folding, because folding is
-    exactly what would erase it.
+    not English, whatever language it is. It is computed before folding, which is what would erase it.
     """
     lowered = prompt.lower()
     saw_non_ascii = any(
@@ -186,8 +181,8 @@ def route(prompt: str) -> RouteDecision:
     """Route one prompt. The module-level entry point; :class:`RuleBasedRouter` wraps it for the seam."""
     signals = analyse(prompt)
     if signals.words == 0:
-        # Routing is not validation. An empty prompt is a caller bug, and sending it to the expensive
-        # route would hide that; the simple path fails on it loudly and cheaply.
+        # Routing is not validation: an empty prompt is a caller bug, and the expensive route would
+        # hide it. The simple path fails on it loudly and cheaply.
         return RouteDecision(Route.SIMPLE, RouteReason.EMPTY_PROMPT, signals)
     reason = _reason_for(signals)
     if reason is None:

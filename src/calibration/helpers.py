@@ -1,4 +1,8 @@
-"""Small pure helpers shared by calibration modules."""
+"""Pure helpers shared by calibration modules.
+
+Unit scaling, intrinsics extraction and stereo image-shape checks. Nothing
+here touches a device or the filesystem.
+"""
 
 from __future__ import annotations
 
@@ -14,8 +18,8 @@ __all__ = ["proj_to_K", "unit_scaling", "validate_image_pair_shapes"]
 def unit_scaling(unit: str) -> float:
     """Return the multiplier that converts millimetres into ``unit``.
 
-    Delegates to :mod:`src.utility.unit_scaling` and re-raises an unknown unit
-    as :class:`CalibrationDataError`.
+    Wraps :mod:`src.utility.unit_scaling` and re-raises an unknown unit as
+    :class:`CalibrationDataError`, so callers only catch calibration errors.
     """
     try:
         return _shared_unit_scaling(unit)
@@ -24,7 +28,11 @@ def unit_scaling(unit: str) -> float:
 
 
 def proj_to_K(projection_matrix: np.ndarray) -> np.ndarray:
-    """Extract rectified camera intrinsics from a 3x4 projection matrix."""
+    """Extract rectified camera intrinsics from a 3x4 projection matrix.
+
+    Only fx, fy, cx and cy reach the returned 3x3 K; the fourth column, which
+    holds the translation term, is dropped.
+    """
     projection = np.asarray(projection_matrix, dtype=np.float64)
     if projection.shape != (3, 4):
         raise CalibrationDataError(
@@ -47,7 +55,13 @@ def validate_image_pair_shapes(
     *,
     expected_size: tuple[int, int] | None = None,
 ) -> None:
-    """Validate that a stereo image pair has compatible HxW dimensions."""
+    """Check that a stereo image pair shares one height and width.
+
+    Each image must be grayscale or colour and the two must agree on HxW; with
+    ``expected_size`` given as (width, height) they must also match the frame
+    size the calibration was solved at. Any mismatch raises
+    :class:`CalibrationDataError`.
+    """
     if left_image is None or right_image is None:
         raise CalibrationDataError("left_image and right_image are required")
     if left_image.ndim not in (2, 3):

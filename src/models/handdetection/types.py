@@ -1,8 +1,8 @@
 """Value objects for hand detection: a 2-D detection, a 3-D position, and a gesture reading.
 
-Frozen dataclasses that validate in `__post_init__`, per the repo's value-object convention. Every
-one of these crosses a boundary between a C++ inference graph and geometry code that will happily
-propagate a NaN into a robot pose.
+Frozen dataclasses that validate in `__post_init__`. Each one crosses the boundary between a C++
+inference graph and geometry code that propagates a NaN into a robot pose without complaining, so
+the validation rejects non-finite and wrong-shaped values at construction.
 """
 
 from __future__ import annotations
@@ -28,11 +28,10 @@ __all__ = [
 
 
 class Handedness(StrEnum):
-    """Which hand MediaPipe thinks it saw.
+    """Which hand MediaPipe reported.
 
-    MediaPipe reports this from the camera's point of view on a non-mirrored image. A selfie-style
-    preview flips it, which is a display concern: this enum records what the model said, and the
-    caller that mirrors the image is the one that has to reinterpret it.
+    The label is from the camera's point of view on a non-mirrored image. This enum records what
+    the model said; a caller that mirrors the frame for display has to reinterpret it.
     """
 
     LEFT = "left"
@@ -43,10 +42,9 @@ class Handedness(StrEnum):
 class HandGesture(StrEnum):
     """The gestures this package commits to recognising.
 
-    Four values, not the seven MediaPipe's canned classifier knows: this package promises exactly
-    thumbs-up and thumbs-down, and everything else is `OTHER`, which is not the same as `NONE`. At
-    an operator console "the cell saw your hand and it was not a thumbs-up" and "the cell saw
-    nothing" call for different actions, so they stay two values.
+    Four values, not the seven MediaPipe's canned classifier knows: thumbs-up and thumbs-down are
+    mapped, everything else is `OTHER`, and `OTHER` is not `NONE`. A hand that was not a thumbs-up
+    and no hand at all call for different actions at an operator console.
     """
 
     THUMB_UP = "thumb_up"
@@ -59,16 +57,16 @@ class HandGesture(StrEnum):
 class PalmDetection:
     """One hand found in one frame, in image space.
 
-    `landmarks` holds exactly 21 integer pixel coordinates in MediaPipe's layout, and
-    `palm_center_xy` is their palm-subset mean, sub-pixel and hence float.
+    `landmarks` holds exactly 21 integer pixel coordinates in MediaPipe's layout. `palm_center_xy`
+    is the mean over the palm subset of those, and is float because that mean is sub-pixel.
     """
 
     palm_center_xy: tuple[float, float]
     landmarks: tuple[tuple[int, int], ...]
     hand_index: int = 0
     handedness: Handedness = Handedness.UNKNOWN
-    #: MediaPipe's confidence in the handedness call, not in the detection itself. Kept because a
-    #: low value is the usual explanation for a left/right label that looks wrong.
+    #: MediaPipe's confidence in the handedness label only, not in the detection. A low value here
+    #: is the usual explanation for a left/right call that looks wrong.
     handedness_score: float = 0.0
 
     def __post_init__(self) -> None:
@@ -105,8 +103,8 @@ class PalmDetection:
 class GestureReading:
     """What the canned classifier said about one hand.
 
-    `raw_label` is kept even when `gesture` is `OTHER` or `NONE`: it is the only way to answer "what
-    did it think that was", and mapping it away would make every unexpected result look identical.
+    `raw_label` carries the classifier's own category name even when `gesture` is `OTHER` or
+    `NONE`, so the shapes that map to neither thumb stay distinguishable from each other.
     """
 
     gesture: HandGesture
@@ -129,9 +127,8 @@ class GestureReading:
 class HandObservation:
     """One hand seen once: where it is in the image, and what it was doing.
 
-    The pairing exists because the canned gesture model returns both: it embeds a hand landmarker.
-    Handing back two parallel lists and leaving the caller to align them by index is how the two
-    halves end up describing different hands.
+    The canned gesture model embeds a hand landmarker and returns both halves at once. Pairing them
+    in one object keeps a caller from aligning two parallel lists by index and crossing the hands.
     """
 
     palm: PalmDetection
@@ -142,9 +139,9 @@ class HandObservation:
 class HandPosition3D:
     """A hand's palm centre in metric space: camera frame and robot base frame, millimetres.
 
-    Both arrays are coerced to read-only `float64` of shape `(3,)`. Read-only because these are
-    handed to motion code: a caller that mutates one in place would change a pose another caller is
-    still holding, and the numpy-level `ValueError` names the mistake at the moment it happens.
+    Both arrays are coerced to `float64` of shape `(3,)` and marked read-only. These are handed to
+    motion code, where an in-place write would alter a pose another caller still holds; the
+    read-only flag turns such a write into a `ValueError` at the point it is attempted.
     """
 
     position_base: np.ndarray
@@ -183,9 +180,8 @@ class HandPosition3D:
 class LocatedHand:
     """The complete answer about one hand: where it is in metric space, and what it was doing.
 
-    Returned as one object rather than a tuple because these three always travel together and a
-    caller that unpacks them into loose variables is one refactor away from pairing a position with
-    the wrong gesture.
+    One object rather than a tuple: the three parts always travel together, and unpacking them into
+    loose variables invites pairing a position with another hand's gesture.
     """
 
     position: HandPosition3D
@@ -196,7 +192,7 @@ class LocatedHand:
 def as_landmark_tuple(landmarks: Sequence[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
     """Freeze a landmark sequence for `PalmDetection`.
 
-    A frozen dataclass holding a `list` is frozen in name only; this is the one-line conversion that
-    keeps every construction site honest.
+    A frozen dataclass holding a `list` is frozen in name only, so construction sites convert here
+    instead of passing the sequence through.
     """
     return tuple((int(x), int(y)) for x, y in landmarks)

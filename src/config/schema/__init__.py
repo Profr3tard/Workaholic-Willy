@@ -1,8 +1,8 @@
 """Public schema surface for the configuration package.
 
-Import from here rather than reaching into ``camera``, ``models`` or
-``robot`` submodules. Internal modules are re-exported as a courtesy
-but their layout is not part of the stable contract.
+Import from here rather than reaching into the ``camera``, ``models`` or
+``robot`` submodules. Those are re-exported for convenience and their
+layout is not part of the stable contract.
 """
 
 from ._base import StrictModel, validate_aruco_dict_name

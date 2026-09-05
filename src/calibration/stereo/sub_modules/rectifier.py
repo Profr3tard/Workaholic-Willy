@@ -9,11 +9,11 @@ __all__ = ["StereoRectifier"]
 
 class StereoRectifier:
     """
-    Performs stereo image rectification with the remap tables of a `CalibrationResult`.
+    Rectifies stereo pairs with the remap tables of a `CalibrationResult`.
 
-    Rectification puts corresponding points on the same horizontal line
-    (epipolar alignment), which accurate disparity computation and 3D
-    reconstruction require.
+    Rectification puts corresponding points on the same image row, the
+    epipolar alignment that disparity computation and 3D reconstruction
+    assume.
     """
     
     def __init__(self, calib: CalibrationResult):
@@ -21,9 +21,10 @@ class StereoRectifier:
     
     def rectify(self, left_bgr, right_bgr):
         """
-        Rectifies a left/right BGR pair and returns both rectified images (BGR).
+        Rectifies a left/right BGR pair and returns both images, still BGR.
 
-        Both images must have the calibration's `frame_size`.
+        Both must have the calibration's `frame_size`; any other pair raises
+        StereoCalibrationError.
         """
         left = np.asarray(left_bgr)
         right = np.asarray(right_bgr)

@@ -1,18 +1,17 @@
 """Qwen3-VL as a detector: ``detect_all(bgr, prompt) -> [Detection]``, the shape GroundingDINO has.
 
-This is what keeps the VLM route small. A grounding VLM produces boxes, and boxes are what
-:class:`~src.models.perception_backend.TwoStageBackend` already knows how to hand to SAM2. So the
-VLM is not a new kind of pipeline but a drop-in replacement for the detector stage, and the existing
-two-stage backend composes it with the existing segmenter unchanged.
+A grounding VLM produces boxes, and boxes are what
+:class:`~src.models.perception_backend.TwoStageBackend` already hands to SAM2. So this is a drop-in
+replacement for the detector stage rather than a second kind of pipeline, and the two-stage backend
+composes it with the existing segmenter unchanged.
 
 No torch, transformers or weights are imported at module import. Everything heavy is loaded inside
-:meth:`Qwen3VLGrounder._ensure_loaded`, so this module imports on CI, on macOS, and on a box with no
+:meth:`Qwen3VLGrounder._ensure_loaded`, so this module imports on CI, on macOS and on a box with no
 GPU, and a cell that never sends a complex prompt never pays for the model.
 
-Honesty bucket (3): nothing below has run against real weights. The prompt template, the parsing
-contract and the failure paths are unit-tested against recorded and synthetic model output; the
-grounding quality, the VRAM cost and the 4B-versus-8B choice are unmeasured until the on-box run,
-and the config default must follow that measurement rather than the other way round.
+Nothing here has run against real weights. The grounding quality, the VRAM cost and the choice
+between the 4B and 8B checkpoints are unmeasured, so the config default has to follow a measurement
+rather than the other way round.
 """
 
 from __future__ import annotations
@@ -28,18 +27,17 @@ from .parsing import CoordinateSpace, parse_grounding_response
 
 __all__ = ["Qwen3VLGrounder", "GROUNDING_INSTRUCTION"]
 
-#: A file sink rather than a bare ``getLogger``: nothing in this repo configures the root logger, so
-#: the lines below would be formatted and then discarded. The name stays ``__name__`` to match its
-#: siblings in this package rather than the class-named loggers elsewhere in ``models``.
-#: ``create_logger`` is stdlib-only, so the no-torch-at-import promise above still holds.
+#: A file sink: nothing in this repo configures the root logger, so a bare ``getLogger`` would
+#: format the lines below and then discard them. The name stays ``__name__``, matching its siblings
+#: in this package rather than the class-named loggers elsewhere in ``models``. ``create_logger`` is
+#: stdlib-only, so the no-torch-at-import promise above holds.
 _LOG = create_logger(__name__, log_file=VLM_GROUNDER_LOG_FILE, log_dir=MODELS_LOG_DIR)
 
 #: The instruction wrapped around every operator prompt.
 #:
-#: It asks for Qwen's documented ``bbox_2d`` grounding format and, deliberately, for an empty list
-#: when the object is absent. Instruct-tuned models are agreeable by default: without that sentence
-#: they invent a plausible box rather than return nothing, and an invented box is a grasp at the
-#: wrong place. "Return [] if absent" is the most safety-relevant line in this file.
+#: It asks for Qwen's documented ``bbox_2d`` grounding format and for an empty list when the object
+#: is absent. Instruct-tuned models are agreeable by default: without that sentence they invent a
+#: plausible box rather than return nothing, and an invented box becomes a grasp at the wrong place.
 GROUNDING_INSTRUCTION = (
     "Locate every object matching this description and return ONLY a JSON array, no prose:\n"
     '[{{"bbox_2d": [x0, y0, x1, y1], "label": "<short name>"}}]\n'
@@ -52,7 +50,8 @@ GROUNDING_INSTRUCTION = (
 class Qwen3VLGrounder:
     """Ground a free-form prompt to boxes with a Qwen3-VL-Instruct checkpoint.
 
-    Duck-types the detector contract (``detect_all``), so it drops straight into ``TwoStageBackend``.
+    Implements the ``detect_all`` detector contract, so ``TwoStageBackend`` takes it wherever a
+    phrase detector goes.
     """
 
     def __init__(
@@ -66,9 +65,9 @@ class Qwen3VLGrounder:
         preload: bool = False,
         coordinate_space: CoordinateSpace = CoordinateSpace.GRID_1000,
     ) -> None:
-        #: What this checkpoint's box numbers mean, measured for Qwen3-VL-4B-Instruct. Exposed as a
-        #: parameter because a future checkpoint may differ and the failure is silent: grid values
-        #: look like plausible pixels on a large frame. See :class:`CoordinateSpace`.
+        #: What this checkpoint's box numbers mean, measured for Qwen3-VL-4B-Instruct. A parameter
+        #: because a future checkpoint may differ and the failure is silent: grid values look like
+        #: plausible pixels on a large frame. See :class:`CoordinateSpace`.
         self.coordinate_space = coordinate_space
         self.model_id = model_id
         self._source = model_path or model_id
@@ -78,8 +77,8 @@ class Qwen3VLGrounder:
         self._model: Any = None
         self._processor: Any = None
         if preload:
-            # Predictable latency and VRAM held from the start, versus nothing paid until a complex
-            # prompt arrives. Config chooses; both are legitimate for different cells.
+            # Predictable latency and VRAM held from cell build, against nothing paid until the
+            # first complex prompt arrives. Config chooses; both suit different cells.
             self._ensure_loaded()
 
     @property
@@ -87,7 +86,10 @@ class Qwen3VLGrounder:
         return self._model is not None
 
     def _ensure_loaded(self) -> None:
-        """Load weights on first use. Raises the underlying error; the guard decides what it means."""
+        """Load weights on first use.
+
+        Raises the underlying error unchanged; ``GuardedVlmBackend`` decides what it means.
+        """
         if self._model is not None:
             return
         # Imported here, not at module scope: this module must import with no torch and no GPU.
@@ -98,13 +100,11 @@ class Qwen3VLGrounder:
         _LOG.info("loading VLM %s (device=%s)", self._source, self._device)
         self._processor = AutoProcessor.from_pretrained(self._source, local_files_only=self._local)
         # Not `device_map=`: that routes through `accelerate`, which is absent from the validated
-        # Isaac environment and would fail at load with an error naming accelerate rather than the
-        # real situation. `.to(device)` needs no extra dependency and is the correct call for a
-        # single GPU anyway; device_map earns its keep only for multi-GPU sharding or CPU offload,
-        # neither of which this cell does.
-        # Typed as Any deliberately: transformers annotates `.to()` in a way that mypy reads as
-        # taking a PreTrainedModel rather than a device string, and this module already treats the
-        # model as an opaque handle.
+        # Isaac environment and fails at load with an error naming accelerate rather than the real
+        # situation. `.to(device)` needs no extra dependency and is the right call for a single GPU;
+        # device_map earns its keep only for multi-GPU sharding or CPU offload.
+        # `model` is typed Any because transformers annotates `.to()` as taking a PreTrainedModel
+        # rather than a device string, which mypy then rejects.
         model: Any = AutoModelForImageTextToText.from_pretrained(
             self._source,
             local_files_only=self._local,
@@ -113,7 +113,7 @@ class Qwen3VLGrounder:
         self._model = model.to(self._device)
         self._model.eval()
         self._torch = torch
-        # The load cost is what `preload` trades against first-prompt latency, so it is logged.
+        # The load cost is what `preload` trades against first-prompt latency.
         _LOG.info("VLM %s ready in %.1f s", self.model_id, time.perf_counter() - started)
 
     def _generate(self, image_rgb: Any, prompt: str) -> str:
@@ -147,10 +147,10 @@ class Qwen3VLGrounder:
         if array.ndim != 3 or array.shape[2] != 3:
             raise ValueError(f"expected an HxWx3 BGR image, got shape {array.shape}")
         height, width = int(array.shape[0]), int(array.shape[1])
-        # The processor expects RGB; every caller here speaks BGR. `ascontiguousarray` is load-bearing,
-        # not tidiness: a bare `[..., ::-1]` is a negative-stride view, and torch refuses those with
-        # "At least one stride in the given numpy array is negative" from deep inside the image
-        # processor, several frames away from anything that mentions this file.
+        # The processor expects RGB; every caller here speaks BGR. `ascontiguousarray` is required:
+        # a bare `[..., ::-1]` is a negative-stride view, and torch refuses those with "At least one
+        # stride in the given numpy array is negative", raised deep inside the image processor and
+        # several frames away from anything naming this file.
         image_rgb = np.ascontiguousarray(array[..., ::-1])
 
         # Timed around generate and parse together, because that span is what a caller waits for.

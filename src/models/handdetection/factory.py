@@ -1,15 +1,15 @@
-"""Build the detectors from config: the readers that make `models.handdetect` mean something.
+"""Build the detectors from config: the readers of `models.handdetect` and `models.gesturedetect`.
 
-Each function below consumes its config block field by field, and these builders are the only
-readers of `models.handdetect` and `models.gesturedetect`: a key dropped here is a key nobody
-reads. The detector keys reach MediaPipe; `palm_patch_radius_px` and `min_depth_samples` reach
-`HandFinder`, which samples depth around the palm.
+Each function consumes its block field by field, and these are the only readers of those two
+blocks, so a key dropped here is a key nobody reads. The detector keys reach MediaPipe;
+`palm_patch_radius_px` and `min_depth_samples` reach `HandFinder`, which samples depth around the
+palm.
 
-The 3-D builder deliberately does not source its transforms from config. A CAMERA->BASE transform is
-a calibration artefact whose loader already exists (`grasping.fusion` extrinsics, or an eye-in-hand
-resolver composed from the live TCP), and inventing a second, parallel way to spell it in
-`models.handdetect` would be a second source of truth for the most safety-relevant number here. The
-caller passes the transforms it already has.
+The 3-D builder does not source its transforms from config. A CAMERA->BASE transform is a
+calibration artefact with an existing loader (`grasping.fusion` extrinsics, or an eye-in-hand
+resolver composed from the live TCP), and a second spelling of it in `models.handdetect` would be a
+second source of truth for the most safety-relevant number here. The caller passes the transforms it
+already has.
 """
 
 from __future__ import annotations
@@ -70,8 +70,8 @@ def build_hand_finder(
     """`models.handdetect` + the caller's calibration -> a 3-D hand search.
 
     `observer` defaults to a landmark-only detector built from the same block. Pass a
-    `ThumbGestureRecognizer` (from `build_gesture_recognizer`) instead when the located hand should
-    also carry a gesture: that model returns landmarks too, so nothing is detected twice.
+    `ThumbGestureRecognizer` from `build_gesture_recognizer` when the located hand should also carry
+    a gesture: that model returns landmarks too, so nothing is detected twice.
     """
     return HandFinder(
         observer if observer is not None else build_palm_detector(config),

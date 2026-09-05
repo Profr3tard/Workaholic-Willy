@@ -1,7 +1,8 @@
 """Workaholic-Willy configuration package.
 
-Schema classes are imported eagerly. YAML-backed loader helpers are loaded
-lazily so schema-only imports do not require the optional YAML dependency.
+The schema classes are imported eagerly. The YAML-backed loader helpers arrive
+through ``__getattr__`` instead, so a schema-only import does not pull in the
+optional YAML dependency.
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ from .schema import (
 
 _LOADER_EXPORTS = {"ConfigError", "load_config", "load_robot_config", "reload_config"}
 
-#: The noun. Lazy for the same reason the loader helpers are: it reaches YAML on first use, and a
-#: schema-only import must not require the optional dependency.
+#: The capability noun of this package. Lazy for the same reason as the loader helpers: it
+#: reaches YAML on first use, and a schema-only import must not need the optional dependency.
 _TREE_EXPORTS = {"ConfigTree", "LoadedTree", "default_data_dir"}
 
 

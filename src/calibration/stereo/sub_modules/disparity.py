@@ -1,11 +1,14 @@
 """SGBM-based disparity computation with optional WLS refinement.
 
 Wraps OpenCV's ``StereoSGBM`` matcher and adds validated configuration
-(``num_disparities`` divisible by 16, odd ``block_size``). Optional on top of
-that: a WLS post-filter (``cv.ximgproc.createDisparityWLSFilter``, requires
-``opencv-contrib-python``) that smooths disparities in low-texture regions
-while preserving edges, ``MODE_SGBM_3WAY`` for a ~2x speedup on 720p frames,
-and a temporal exponential moving average for realtime mode.
+(``num_disparities`` divisible by 16, odd ``block_size``). Three parts are
+optional: a WLS post-filter (``cv.ximgproc.createDisparityWLSFilter``, which
+needs ``opencv-contrib-python``) that smooths low-texture regions while
+preserving edges, ``MODE_SGBM_3WAY`` for a ~2x speedup on 720p frames, and a
+temporal exponential moving average for realtime mode.
+
+``compute`` returns ``(disparity_float32, valid_mask_bool)``; that shape is
+a stable contract.
 """
 
 from __future__ import annotations
@@ -23,9 +26,9 @@ if TYPE_CHECKING:  # pragma: no cover (typing only)
 
 __all__ = ["DisparityComputer"]
 
-# OpenCV's recommended SGBM smoothness penalty heuristics. P1 penalises a small
-# disparity change per pixel, P2 a large one. The factor 3 is the channel count
-# of OpenCV's default and stays there although the input is grayscale.
+# OpenCV's recommended SGBM smoothness penalties: P1 for a disparity change of
+# one pixel, P2 for a larger one. The factor 3 is OpenCV's channel count and
+# stays although the input is grayscale.
 _P1_FACTOR = 8 * 3
 _P2_FACTOR = 32 * 3
 
@@ -54,8 +57,8 @@ class DisparityComputer:
         if cfg.mode == "sgbm_3way":
             self._left_matcher.setMode(cv.STEREO_SGBM_MODE_SGBM_3WAY)
 
-        # WLS post-filter, initialised only when contrib is available and
-        # the user enabled it. Falls back to plain SGBM otherwise.
+        # WLS post-filter, built only when the config asks for it and contrib
+        # supplies the filter. Plain SGBM otherwise.
         self._right_matcher = None
         self._wls = None
         if cfg.wls.enabled:
@@ -69,8 +72,8 @@ class DisparityComputer:
                 self._wls.setLambda(float(cfg.wls.lambda_))
                 self._wls.setSigmaColor(float(cfg.wls.sigma_color))
 
-        # Reusable grayscale buffers, which avoid reallocating one cv.Mat per
-        # frame in the realtime loop.
+        # Grayscale buffers reused across frames, so the realtime loop
+        # allocates no cv.Mat per frame.
         self._gL: Optional[np.ndarray] = None
         self._gR: Optional[np.ndarray] = None
 
@@ -91,6 +94,9 @@ class DisparityComputer:
         Returns:
             disparity (float32, pixels): invalid samples are NaN.
             valid_mask (bool): True where disparity is finite.
+
+        Raises:
+            StereoCalibrationError: the two images have incompatible shapes.
         """
         left = np.asarray(rect_left_bgr)
         right = np.asarray(rect_right_bgr)
@@ -112,7 +118,8 @@ class DisparityComputer:
         else:
             raw = self._left_matcher.compute(gL, gR)
 
-        # OpenCV returns int16 scaled by 16. Divide to get fractional pixels.
+        # The matcher output is int16 with disparity scaled by 16, so divide
+        # it to get fractional pixels.
         disp = raw.astype(np.float32) * (1.0 / 16.0)
 
         invalid = disp <= 0.0
@@ -133,6 +140,12 @@ class DisparityComputer:
     # Internal helpers
     # ------------------------------------------------------------------
     def _to_gray(self, bgr: np.ndarray, slot: str) -> np.ndarray:
+        """Convert BGR to grayscale in the reusable buffer for ``slot``.
+
+        For a three-channel input the returned array is that buffer, so the
+        next call for the same slot overwrites it. A single-channel input is
+        returned unchanged, and then the result aliases the caller's array.
+        """
         if bgr.ndim == 2:
             return bgr
         if bgr.ndim != 3 or bgr.shape[2] != 3:
@@ -151,7 +164,7 @@ class DisparityComputer:
         return prev
 
     def _apply_temporal(self, disp: np.ndarray) -> np.ndarray:
-        """One-pole EMA on disparity, restricted to mutually-valid pixels."""
+        """One-pole EMA on disparity, blending only pixels valid in both frames."""
         prev = self._prev_disp
         if prev is None or prev.shape != disp.shape:
             self._prev_disp = disp.copy()
@@ -163,8 +176,8 @@ class DisparityComputer:
         blended[both_valid] = (
             alpha * disp[both_valid] + (1.0 - alpha) * prev[both_valid]
         )
-        # Where the new frame has a hole but the previous one was valid,
-        # carry the previous value forward to smooth temporary dropouts.
+        # A hole in the new frame keeps the previous value, so a short dropout
+        # does not punch a gap into the output.
         only_prev = ~np.isfinite(disp) & np.isfinite(prev)
         blended[only_prev] = prev[only_prev]
         self._prev_disp = blended

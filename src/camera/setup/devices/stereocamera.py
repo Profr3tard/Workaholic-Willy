@@ -8,13 +8,14 @@ from src.camera.setup.quality import configure_camera_for_quality
 
 
 class StereoVisionCalibrationSingleDevice:
-    """
-    Records stereo calibration pairs from one stereo device, side-by-side or top-bottom.
+    """Records stereo calibration pairs from one device that delivers both eyes in a frame.
 
-    Opens the single device, configures its stream through `configure_camera_for_quality` and
-    checks the resolution and frame rate it actually reports. Each frame is cropped, split into
-    a left and a right eye, and checked against the configured per-eye size. The saved images
-    are the raw split; the operator overlay is drawn on separate preview copies only.
+    Opens the device, configures its stream through ``configure_camera_for_quality`` and
+    checks the resolution and frame rate it reports back. Each frame is cropped, split into a
+    left and a right eye, and checked against the configured per-eye size. Capture is
+    interactive: ``s`` saves the pair on screen and ESC ends the session. Where
+    ``min_sharpness`` is set, a pair whose Laplacian variance falls below it is not saved.
+    The saved images are the raw split, so the operator overlay goes on preview copies only.
     """
 
     def __init__(self, dev_cfg: SingleDeviceRigConfig):
@@ -247,6 +248,7 @@ class StereoVisionCalibrationSingleDevice:
             )
 
     def forward(self):
+        """Open the device, check its reported settings, and run the capture session."""
         os.makedirs(self.img_left_dir, exist_ok=True)
         os.makedirs(self.img_right_dir, exist_ok=True)
 

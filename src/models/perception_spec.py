@@ -2,23 +2,22 @@
 
 ``build_perception`` is the only function that reads ``models.pipeline``. ``build_object_detector``
 and ``build_segmenter``, which ``build_real_components`` calls, read only ``models.detector`` and
-``models.segmenter_backend`` (``factory.py:27-61``), so a stack assembled from those two ignores the
-pipeline block entirely, with no error and no log line, and ``build_perception``'s fail-closed
-refusals never fire for it.
+``models.segmenter_backend`` (``factory.py:27-61``), so a stack assembled from that pair ignores the
+pipeline block with no error and no log line, and ``build_perception``'s fail-closed refusals never
+fire for it.
 
-:meth:`PerceptionSpec.build` hands itself to ``build_perception``, so there is one builder rather
-than two. The spec's seven fields are precisely the seven attributes that function reads, which is
-why it satisfies the same structural contract a ``ModelsConfig`` does and why the factory annotates
-its input as :class:`PerceptionFields` instead of ``ModelsConfig``.
+:meth:`PerceptionSpec.build` hands itself to ``build_perception``, so there is one builder. The
+spec's seven fields are exactly the seven attributes that function reads, which is why it satisfies
+the same structural contract a ``ModelsConfig`` does and why the factory annotates its input as
+:class:`PerceptionFields` rather than ``ModelsConfig``.
 
-Seven fields and not ten, because ``ModelsConfig`` has ten, three of them required, and one of those
-three is ``stt``: eleven Whisper fields, ten of them mandatory, that perception never reads. A Python
-caller who wants a perception stack would otherwise have to invent them. ``stt`` is not defaulted,
-and defaulting it would change validation for every YAML tree in the repository, so the spec carries
-seven fields instead.
+Seven and not the ten a ``ModelsConfig`` carries: three of those ten are required and one of the
+three is ``stt``, eleven Whisper fields with ten mandatory that perception never reads. ``stt`` is
+not defaulted, and defaulting it would change validation for every YAML tree in the repository, so
+the spec carries seven fields and a Python caller never has to supply ``stt`` at all.
 
 Importing this module must not pull torch, because ``autonomous_grasp`` imports it. Every heavy
-import stays inside ``build()``, exactly as ``factory.py`` already does it.
+import stays inside ``build()``, as ``factory.py`` already does.
 """
 
 from __future__ import annotations
@@ -47,15 +46,13 @@ _LOG = create_logger(__name__, log_file=MODELS_FACTORY_LOG_FILE, log_dir=MODELS_
 class PerceptionFields(Protocol):
     """The seven attributes ``build_perception`` reads. Structural, so nothing has to inherit it.
 
-    ``ModelsConfig`` satisfies this and so does :class:`PerceptionSpec`. The factory annotates its
-    input as this Protocol, which is what lets the narrow value reach the wide builder without a
-    second builder.
+    ``ModelsConfig`` satisfies it and so does :class:`PerceptionSpec`. The factory annotates its
+    input as this Protocol, which is what lets the narrow value reach the one builder.
     """
 
-    # Property members, not plain attributes. A Protocol member written as `x: int` is a settable
-    # variable, which a frozen dataclass's read-only attributes do not satisfy. A read-only property
-    # member is satisfied by a frozen field and by a mutable one, which is the correct requirement
-    # here: this builder only ever reads.
+    # Property members, not plain attributes: a member written as `x: int` is a settable variable,
+    # which the read-only attributes of a frozen dataclass do not satisfy. A read-only property
+    # member is satisfied by a frozen field and by a mutable one, and this builder only ever reads.
     @property
     def objectdetector(self) -> "ObjectDetectorConfig | None": ...
     @property
@@ -76,10 +73,10 @@ class PerceptionFields(Protocol):
 class PerceptionResolution:
     """What :meth:`PerceptionSpec.build` will construct, decided without loading a weight.
 
-    Frozen so there is one resolution, rendered by whoever needs it, ``/v1/diagnostics`` among
-    them. A console that re-derives the same answer from ``models.pipeline`` in prose beside the
-    builder is a second reading of one config, and the two can disagree about whether the pipeline
-    block reaches hardware at all and about which segmenter the VLM route uses.
+    One resolution, rendered by whoever needs it, ``/v1/diagnostics`` included. Re-deriving the
+    same answer from ``models.pipeline`` in prose beside the builder is a second reading of one
+    config, and the two readings can disagree about whether the pipeline block reaches hardware and
+    about which segmenter the VLM route uses.
     """
 
     #: Which half of the config decided this: ``"models.pipeline"`` or ``"legacy keys"``.
@@ -93,9 +90,8 @@ class PerceptionResolution:
     router_enabled: bool = False
     vlm_model_id: str | None = None
     vlm_on_unavailable: str | None = None
-    #: The message :meth:`PerceptionSpec.build` would raise, verbatim, or ``""``. Not a paraphrase:
-    #: both come from the same constants in ``factory.py``, so a refusal cannot be described here in
-    #: words the builder does not use.
+    #: The message :meth:`PerceptionSpec.build` would raise, verbatim, or ``""``. Read from the same
+    #: constants in ``factory.py`` that the builder raises, never paraphrased here in other words.
     refusal: str = ""
 
     @property
@@ -146,11 +142,11 @@ class PerceptionSpec:
     def from_config(cls, models: "ModelsConfig") -> "PerceptionSpec":
         """The YAML door: take a validated ``ModelsConfig`` and keep the seven fields it reads.
 
-        A straight projection rather than a normalisation. Folding the legacy keys into an
-        equivalent ``pipeline`` block would change behaviour: the legacy branch refuses a missing
-        ``models.rtdetr`` with ``build_object_detector``'s message and the pipeline branch with
-        ``build_perception``'s, and those are different sentences reaching an operator. The spec
-        carries what the config says; ``build()`` decides what it means.
+        A projection, not a normalisation. Folding the legacy keys into an equivalent ``pipeline``
+        block would change behaviour: a missing ``models.rtdetr`` is refused with
+        ``build_object_detector``'s message on the legacy branch and with ``build_perception``'s on
+        the pipeline branch, and an operator reads those two sentences. The spec carries what the
+        config says; ``build()`` decides what it means.
         """
         return cls(
             objectdetector=models.objectdetector,
@@ -175,7 +171,7 @@ class PerceptionSpec:
 
         ``pipeline`` is optional and is how the VLM route and the prompt router are reached. Its
         sub-blocks are all defaulted, so ``PipelineConfig(zero_shot=ZeroShotPipelineConfig(
-        backend="vlm"))`` is the whole incantation. Left out, this is exactly the legacy stack.
+        backend="vlm"))`` is enough to reach the VLM. Omitted, this builds the legacy stack.
         """
         return cls(
             objectdetector=objectdetector,
@@ -198,9 +194,9 @@ class PerceptionSpec:
     ) -> "PerceptionSpec":
         """Fixed-vocabulary, from Python: RT-DETR's trained classes and a mask source.
 
-        ``objectdetector`` stays ``None`` here on purpose. A closed-set stack has no phrase
-        grounder, and leaving the field empty is what makes ``build_perception``'s router refusal
-        reachable instead of quietly grounding with a model this stack never asked for.
+        ``objectdetector`` stays ``None``. A closed-set stack has no phrase grounder, and the empty
+        field is what keeps ``build_perception``'s router refusal reachable instead of grounding
+        with a model this stack never asked for.
         """
         return cls(
             objectdetector=None,
@@ -214,7 +210,7 @@ class PerceptionSpec:
 
     # ---------------------------------------------------------------- the verb
     def build(self, *, debug_images: bool = False) -> "PerceptionBackend":
-        """Construct the stack. Delegates to ``build_perception``; there is only one builder."""
+        """Construct the stack. ``build_perception`` does the work, with this spec as its input."""
         from src.models.factory import build_perception
 
         return build_perception(self, debug_images=debug_images)  # type: ignore[no-any-return]
@@ -223,8 +219,8 @@ class PerceptionSpec:
     def resolve(self) -> PerceptionResolution:
         """What :meth:`build` would construct, and why, without touching a weight.
 
-        Every refusal string comes from ``factory.py``, never from a sentence written here. A
-        paraphrase of a refusal is a second answer to the question the builder answers.
+        Every refusal string comes from ``factory.py``. A refusal paraphrased here would be a
+        second answer to the question the builder answers.
         """
         from src.models import factory
 
@@ -261,8 +257,8 @@ class PerceptionSpec:
             )
 
         zs = pipeline.zero_shot
-        # The segmenter is read, not pinned, on every branch including the VLM one:
-        # `_build_vlm_backend` reads `pipeline.zero_shot.segmenter` (factory.py:219), and the schema
+        # The segmenter is read on every branch, the VLM one included, and never pinned here:
+        # `_build_vlm_backend` reads `pipeline.zero_shot.segmenter` (factory.py:219) and the schema
         # does not pin `sam2` there.
         segmenter = zs.segmenter
         refusal = ""

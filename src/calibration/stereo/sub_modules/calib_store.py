@@ -1,8 +1,10 @@
 """JSON persistence for stereo calibration parameters.
 
-Stores the small per-camera intrinsics / rectification parameters (never the
-megabyte remap tables, which are recomputed on load inside
-:class:`CalibrationResult`), schema-versioned like the extrinsics serializer.
+Writes the small per-camera intrinsics and rectification parameters. The
+remap tables run to megabytes and are not stored; :class:`CalibrationResult`
+recomputes them on load. Each file carries :data:`STEREO_CALIB_SCHEMA`, the
+same versioning the extrinsics serializer applies, and a load refuses any
+other value.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ __all__ = ["STEREO_CALIB_SCHEMA", "StereoCalibrationStore"]
 
 
 class StereoCalibrationStore:
-    """Read/write stereo calibration params (+ optional extrinsics) as JSON."""
+    """Reads and writes the calibration parameters, and an optional T_cam_to_base, as JSON."""
 
     def save(
         self,

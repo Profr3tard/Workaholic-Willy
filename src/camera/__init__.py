@@ -1,4 +1,4 @@
-"""Camera acquisition, setup, and runtime orchestration."""
+"""Camera rigs: device setup, the capture pipeline, and the frames a caller streams."""
 
 from __future__ import annotations
 

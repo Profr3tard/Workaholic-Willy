@@ -1,23 +1,20 @@
-"""Route each prompt, then delegate: the piece that makes three parts into a pipeline.
-
-The three parts are the perception backends, the prompt router and the VLM backend.
+"""Two perception backends behind one, chosen per prompt by a router.
 
     backend = RoutedPerceptionBackend(router=..., simple_factory=..., vlm_factory=...)
     objects = backend.perceive(image_bgr, "der kaputte Würfel")   # -> the VLM route
     backend.last_decision.describe()                              # 'vlm (non_english)'
 
-Both sides are lazy. Constructing both eagerly would load GroundingDINO and Qwen at cell build,
-around nine gigabytes of VRAM and ten seconds, on a cell that may only ever send simple prompts, or
-only complex ones. Each route is built the first time it is actually chosen.
+Both routes are lazy. Building both eagerly would load GroundingDINO and Qwen at cell build, around
+nine gigabytes of VRAM and ten seconds, on a cell that may only ever send simple prompts, or only
+complex ones. Each route is built the first time it is chosen.
 
 The simple route gets a normalised prompt; the VLM route does not. GroundingDINO's caption
-convention (lowercase, one trailing period) is what its text encoder was trained on. The VLM is being
-asked to reason about the operator's phrasing, so rewriting it would be changing the question.
+convention, lowercase with one trailing period, is what its text encoder was trained on, while the
+VLM is asked to reason about the operator's phrasing, so rewriting that would change the question.
 
 The decision is recorded, not just acted on. ``last_decision`` and the ``on_decision`` callback are
-what the console, the PERCEIVED event and ``GraspAttemptRecord.extra`` read: an operator seeing a
-slow pick should be able to find out that their wording sent it down the expensive route, and which
-word did it.
+what the console, the PERCEIVED event and ``GraspAttemptRecord.extra`` read, so an operator seeing a
+slow pick can find out that their wording chose the expensive route, and which word did it.
 """
 
 from __future__ import annotations
@@ -39,17 +36,16 @@ from src.utility.log_cfg import create_logger
 
 __all__ = ["RoutedPerceptionBackend"]
 
-#: One file for the routing verdicts, so a decision outlives ``last_decision``. Without a handler
-#: the record would last only as long as that attribute. An injected ``logger=`` still wins over
-#: this.
+#: One file for the routing verdicts, so a decision outlives ``last_decision``, which holds only the
+#: most recent one. An injected ``logger=`` wins over this.
 _LOG = create_logger(__name__, log_file=PERCEPTION_ROUTING_LOG_FILE, log_dir=MODELS_LOG_DIR)
 
 
 class RoutedPerceptionBackend:
     """Pick a perception route per prompt and delegate to it.
 
-    Satisfies :class:`~src.models.perception_backend.PerceptionBackend`, so every caller that
-    already takes a backend takes this one unchanged.
+    Satisfies :class:`~src.models.perception_backend.PerceptionBackend`, so any caller that already
+    accepts a backend accepts this one unchanged.
     """
 
     def __init__(
@@ -79,7 +75,7 @@ class RoutedPerceptionBackend:
         return self._last_decision
 
     def built_routes(self) -> tuple[Route, ...]:
-        """Which routes have actually been constructed, so what is holding VRAM right now."""
+        """The routes constructed so far, which are the ones holding VRAM right now."""
         return tuple(self._built)
 
     def _backend_for(self, route: Route) -> Any:
@@ -104,8 +100,8 @@ class RoutedPerceptionBackend:
         if decision.route is Route.SIMPLE and self._normalize:
             text = normalize_simple_prompt(prompt)
 
-        # Not guarded: if the chosen route cannot run, that is the route's own contract to enforce.
-        # The VLM route already decides refuse-vs-degrade with far more context than this class has,
-        # and quietly substituting the other backend here would produce the confident wrong grasp
-        # the routing exists to prevent.
+        # Not guarded: if the chosen route cannot run, enforcing that is the route's own contract.
+        # ``GuardedVlmBackend`` decides refuse against degrade with context this class lacks, and
+        # quietly substituting the other backend here would produce the confident wrong grasp that
+        # routing exists to prevent.
         return tuple(self._backend_for(decision.route).perceive(image_bgr, text))

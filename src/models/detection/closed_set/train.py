@@ -1,14 +1,14 @@
 """RT-DETR fine-tuning: train the closed-set detector on a COCO-format dataset.
 
-Given an ``images/`` directory + a COCO ``annotations.json`` (the standard detection format:
-``images`` + ``annotations`` (``bbox`` in ``[x,y,w,h]``, ``category_id``) + ``categories``), this
-fine-tunes the HF RT-DETR model and exports a ``save_pretrained()`` checkpoint that
+Given an ``images/`` directory + a COCO ``annotations.json`` (``images`` + ``annotations``, each
+annotation carrying ``bbox`` in ``[x,y,w,h]`` and ``category_id``, + ``categories``), this fine-tunes
+the HF RT-DETR model and exports a ``save_pretrained()`` checkpoint that
 :class:`~src.models.detection.closed_set.detector.RtDetrObjectDetector` loads via
 ``model_path=<out> , local=True``, so a trained model drops straight into the perception stack.
 
 The class vocabulary comes from the dataset's ``categories``: the model's classification head is
-re-initialised for that class set (``ignore_mismatched_sizes``), so you can train arbitrary classes,
-not just COCO. The labelled data comes later; this module is the runnable pipeline and its scaffolding.
+re-initialised for that class set (``ignore_mismatched_sizes``), so the trained classes need not be
+COCO's. No labelled dataset ships here; this module is the pipeline that consumes one.
 
 CLI (mirrors ``success_model_calibration``)::
 
@@ -38,10 +38,10 @@ from pathlib import Path
 from src.models.constants import MODELS_LOG_DIR, RTDETR_TRAIN_LOG_FILE
 from src.utility.log_cfg import create_logger
 
-#: A training run is long, unattended and produces exactly one artefact, so what it was given, what it
-#: downgraded and where the checkpoint landed have to survive the terminal that started it. Module
-#: scope, like the EKI client's logger, because this module is functions + a CLI, not a class. The
-#: import is stdlib-only, so the module still imports without ``requirements/train.txt``.
+#: A training run is long and unattended, so its inputs, its silent downgrades and the checkpoint path
+#: go to a file rather than to the terminal that started it. Module scope (like the EKI client's
+#: logger) because this module is functions + a CLI, not a class; the import is stdlib-only, so the
+#: module still imports without ``requirements/train.txt``.
 _LOG = create_logger("RtDetrTrain", log_file=RTDETR_TRAIN_LOG_FILE, log_dir=MODELS_LOG_DIR)
 
 DEFAULT_BASE_MODEL = "PekingU/rtdetr_r50vd"
@@ -102,9 +102,9 @@ class CocoIndex:
 def load_coco_index(annotations_path: str | Path) -> CocoIndex:
     """Parse a COCO detection ``annotations.json`` into a :class:`CocoIndex`.
 
-    Groups annotations by ``image_id`` and normalises each to the processor's expected keys
-    (``bbox`` xywh, ``category_id``, ``area``, ``iscrowd``, ``id``). Raises ``FileNotFoundError`` if the
-    file is missing and ``ValueError`` on a malformed COCO document.
+    Groups annotations by ``image_id`` and normalises each to the keys the processor expects
+    (``bbox`` xywh, ``category_id``, ``area``, ``iscrowd``, ``id``). Raises ``FileNotFoundError`` for a
+    missing file and ``ValueError`` for a malformed COCO document.
     """
     p = Path(annotations_path)
     if not p.is_file():
@@ -140,11 +140,11 @@ def load_coco_index(annotations_path: str | Path) -> CocoIndex:
 
 
 def build_id2label(index: CocoIndex) -> dict[int, str]:
-    """The model ``id2label`` (contiguous 0..N-1) + the category-id -> model-id remap it implies.
+    """The model ``id2label``: the dataset's categories over a contiguous ``0..N-1`` label space.
 
-    COCO category ids are arbitrary (may skip / not start at 0); the model head wants a contiguous
-    ``0..N-1`` label space, so we remap. Returns the contiguous ``id2label`` only; the remap is applied
-    by the dataset (see :func:`_category_remap`).
+    COCO category ids are arbitrary (they may skip values or not start at 0) and the model head wants
+    a contiguous space, so the two differ. Only ``id2label`` is returned; the dataset applies the
+    matching category-id to model-id map, which :func:`_category_remap` builds.
     """
     return {i: name for i, (_cid, name) in enumerate(index.categories.items())}
 
@@ -224,13 +224,13 @@ def _resolve_split(data_dir: str | Path, split: str) -> tuple[Path, CocoIndex] |
 def train_rtdetr(*, data_dir: str, output_dir: str, config: TrainConfig) -> dict:
     """Fine-tune RT-DETR on ``<data_dir>/train`` (+ optional ``/val``), export to ``output_dir``.
 
-    Returns the written manifest. Heavy imports (torch / transformers Trainer / accelerate) happen
-    here so the module stays importable without ``requirements/train.txt``; the data existence is
-    checked first so a missing dataset fails fast without needing the training stack.
+    Returns the written manifest. The heavy imports (torch / transformers Trainer / accelerate) sit
+    inside this function so the module stays importable without ``requirements/train.txt``, and the
+    train split is resolved before them so a missing dataset fails without the training stack.
     """
     started = time.perf_counter()
-    # The run's own header. Named fields, not `config.to_dict()`: a dump would be unreadable here and
-    # the full config is already recorded verbatim in the manifest this run writes.
+    # The run header names its fields instead of dumping `config.to_dict()`; the full config is
+    # recorded verbatim in the manifest this run writes.
     _LOG.info(
         "training RT-DETR from %s: data=%s out=%s epochs=%d batch=%d lr=%g image_size=%d seed=%d",
         config.base_model_id, data_dir, output_dir, config.epochs, config.batch_size,
@@ -298,15 +298,14 @@ def train_rtdetr(*, data_dir: str, output_dir: str, config: TrainConfig) -> dict
     train_ds = _CocoDS(train_images, train_index)
     eval_ds = _CocoDS(val_split[0], val_split[1]) if val_split is not None else None
     if val_split is None:
-        # A missing val split is not an error, since val is optional by design, but the run then
-        # produces a train loss and nothing else, so nothing in it can show overfitting. Worth
-        # knowing when reading the manifest that write_manifest emits.
+        # val is optional, so a missing split is not an error; the run then records a train loss and
+        # nothing else, and no number in its manifest can show overfitting.
         _LOG.warning("no val split under %s, training without evaluation", data_dir)
     else:
         _LOG.info("val split: %d image(s) from %s", len(val_split[1].records), val_split[1].source_path)
     if config.fp16 and not torch.cuda.is_available():
-        # The downgrade is silent inside TrainingArguments; on a CPU box it is the difference between
-        # a run finishing overnight and not finishing at all.
+        # TrainingArguments applies the downgrade silently, and on a CPU box it decides whether a run
+        # finishes at all.
         _LOG.warning("fp16 requested but no CUDA device, training in fp32")
 
     args = TrainingArguments(
@@ -357,8 +356,8 @@ def train_rtdetr(*, data_dir: str, output_dir: str, config: TrainConfig) -> dict
 def evaluate_rtdetr(*, model_dir: str, data_dir: str, batch_size: int = 4) -> dict:
     """Evaluate a trained checkpoint on ``<data_dir>/val`` and report the eval loss.
 
-    COCO mAP is not computed: it would need ``pycocotools``/``torchmetrics``, which stay optional so
-    eval runs with just the training stack. Wire it in here when a labelled val set exists.
+    COCO mAP is not computed: it would need ``pycocotools`` or ``torchmetrics``, which stay optional
+    so eval runs on the training stack alone. It belongs here once a labelled val set exists.
     """
     import torch
     from PIL import Image
@@ -367,9 +366,9 @@ def evaluate_rtdetr(*, model_dir: str, data_dir: str, batch_size: int = 4) -> di
     started = time.perf_counter()
     val = _resolve_split(data_dir, "val")
     if val is None:
-        # The fallback stays because it is useful as a smoke test, but the loss it produces is not a
-        # generalisation measure: it is data the checkpoint was fitted on. The warning is what stops
-        # that loss being quoted as a val loss.
+        # Falling back to the train split keeps eval usable as a smoke test, but the loss it returns
+        # is not a generalisation measure: the checkpoint was fitted on that data. The warning is
+        # what stops the number being quoted as a val loss.
         _LOG.warning("no val split under %s, evaluating on the train split (not a held-out score)", data_dir)
         val = _resolve_split(data_dir, "train")
     if val is None:
@@ -424,8 +423,8 @@ def _cmd_train(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:  # noqa: BLE001 (a training failure is exit 3 with the reason on stderr)
-        # Logged with its traceback rather than re-raised: the CLI turns this into exit 3, so the
-        # traceback of a run that died hours in would otherwise be lost.
+        # The traceback is logged rather than raised: the CLI returns exit 3 here, so nothing else
+        # would record why a long run died.
         _LOG.exception("training failed: %s", exc)
         print(f"training failed: {exc}", file=sys.stderr)
         return 3
@@ -445,7 +444,7 @@ def _cmd_eval(args: argparse.Namespace) -> int:
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
-    """Parse a dataset split + report its class map / sizes, with no training stack needed."""
+    """Parse a dataset split and report its class map and sizes; no training stack needed."""
     split = _resolve_split(args.data_dir, args.split)
     if split is None:
         _LOG.error("inspect refused: no %s split under %s", args.split, args.data_dir)

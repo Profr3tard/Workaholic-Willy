@@ -1,5 +1,6 @@
 """
-JSON serialisation for :class:`Extrinsics`.
+JSON serialisation for :class:`Extrinsics` and for the eye-in-hand
+``CAMERA -> TOOL`` transform.
 
 Wire format
 -----------
@@ -16,8 +17,9 @@ Wire format
         "quality": "excellent",
     }
 
-The schema version is checked on load; mismatches raise
-:class:`ExtrinsicsError` rather than silently coercing.
+Both writers render the payload into a ``.tmp`` sibling and move it over the
+target, so a reader never sees half a file. The schema version is checked on
+load; a mismatch raises :class:`ExtrinsicsError` rather than coercing.
 """
 
 from __future__ import annotations
@@ -39,9 +41,9 @@ logger = create_logger(
     "CalibrationSerialization", SERIALIZATION_LOG_FILE, log_dir=CALIBRATION_LOG_DIR
 )
 
-#: Wire schema for a persisted eye-in-hand CAMERA->TOOL calibration transform. Separate from
-#: :data:`EXTRINSICS_SCHEMA`, which is locked to CAMERA->BASE, so a wrist camera has a typed
-#: artifact the multi-camera registry loads into an EyeInHandFrameResolver.
+#: Wire schema for a persisted eye-in-hand CAMERA->TOOL calibration transform. :data:`EXTRINSICS_SCHEMA`
+#: is locked to CAMERA->BASE and cannot carry one, so a wrist camera gets its own typed artifact, which
+#: the multi-camera registry loads into an EyeInHandFrameResolver.
 CAM_TO_TOOL_SCHEMA: str = "willy.calibration.cam_to_tool/1"
 
 __all__ = [
@@ -71,7 +73,11 @@ def extrinsics_to_dict(ext: Extrinsics) -> dict[str, Any]:
 
 
 def extrinsics_from_dict(data: Mapping[str, Any]) -> Extrinsics:
-    """Deserialise :class:`Extrinsics` from :func:`extrinsics_to_dict` output."""
+    """Deserialise :class:`Extrinsics` from :func:`extrinsics_to_dict` output.
+
+    A foreign schema, a missing key, a non-string ``captured_at`` and a payload the
+    dataclass itself rejects all raise :class:`ExtrinsicsError`.
+    """
     schema = data.get("schema")
     if schema != EXTRINSICS_SCHEMA:
         raise ExtrinsicsError(
@@ -113,9 +119,10 @@ def extrinsics_from_dict(data: Mapping[str, Any]) -> Extrinsics:
 
 
 def save_extrinsics(path: str | Path, ext: Extrinsics) -> Path:
-    """Atomically write :class:`Extrinsics` as schema-versioned JSON.
+    """Atomically write :class:`Extrinsics` as schema-versioned JSON, returning the target path.
 
-    Returns the resolved :class:`Path`. Parent directories are created.
+    Missing parent directories are created. Keys are sorted, so two identical solves
+    produce identical bytes.
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -123,7 +130,7 @@ def save_extrinsics(path: str | Path, ext: Extrinsics) -> Path:
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_text(payload, encoding="utf-8")
     tmp.replace(target)
-    # Records which file carries which solve quality, so a bad pick traces back to its solve.
+    # Ties this file to the solve that produced it, so a bad pick traces back to a calibration run.
     logger.info(
         "Extrinsics written: %s (rig=%s, samples=%d, rmse=%.3f mm, quality=%s, %d bytes).",
         target,
@@ -137,7 +144,11 @@ def save_extrinsics(path: str | Path, ext: Extrinsics) -> Path:
 
 
 def load_extrinsics(path: str | Path) -> Extrinsics:
-    """Load :class:`Extrinsics` from a JSON file written by :func:`save_extrinsics`."""
+    """Load :class:`Extrinsics` from a JSON file written by :func:`save_extrinsics`.
+
+    Invalid JSON and a non-object top level raise :class:`ExtrinsicsError`; the payload
+    itself is checked by :func:`extrinsics_from_dict`.
+    """
     raw = Path(path).read_text(encoding="utf-8")
     try:
         data = json.loads(raw)
@@ -158,14 +169,14 @@ def load_extrinsics(path: str | Path) -> Extrinsics:
 
 
 # ----------------------------------------------------------------------
-# Eye-in-hand CAMERA->TOOL calibration transform (for a wrist camera)
+# Eye-in-hand CAMERA->TOOL calibration transform for a wrist camera
 # ----------------------------------------------------------------------
 def save_cam_to_tool(path: str | Path, transform: Transform, *, rig_id: str) -> Path:
     """Atomically persist an eye-in-hand ``CAMERA -> TOOL`` calibration transform as versioned JSON.
 
-    ``transform`` must be ``Transform(from_frame=CAMERA, to_frame=TOOL)`` with translation in mm,
-    the static calibration an :class:`EyeInHandFrameResolver` composes with the live TCP. Raises
-    :class:`ExtrinsicsError` on the wrong frames.
+    ``transform`` must be ``Transform(from_frame=CAMERA, to_frame=TOOL)`` with translation in mm:
+    the static half an :class:`EyeInHandFrameResolver` composes with the live TCP. Wrong frames
+    or a blank ``rig_id`` raise :class:`ExtrinsicsError`.
     """
     if transform.from_frame is not Frame.CAMERA or transform.to_frame is not Frame.TOOL:
         raise ExtrinsicsError(
@@ -193,7 +204,11 @@ def save_cam_to_tool(path: str | Path, transform: Transform, *, rig_id: str) -> 
 
 
 def load_cam_to_tool(path: str | Path) -> Transform:
-    """Load an eye-in-hand ``CAMERA -> TOOL`` transform written by :func:`save_cam_to_tool`."""
+    """Load an eye-in-hand ``CAMERA -> TOOL`` transform written by :func:`save_cam_to_tool`.
+
+    The schema and the stored frame pair are both checked here, so a CAMERA->BASE artifact
+    written by :func:`save_extrinsics` cannot enter as a wrist calibration.
+    """
     raw = Path(path).read_text(encoding="utf-8")
     try:
         data = json.loads(raw)

@@ -1,12 +1,12 @@
 """
-:class:`Extrinsics`, the typed, vendor-neutral output of an eye-to-hand
+:class:`Extrinsics`, the typed, vendor-neutral result of an eye-to-hand
 calibration solve.
 
 Wraps a :class:`~src.geometry.transform.Transform` locked to
-``Frame.CAMERA -> Frame.BASE`` (translation in millimetres) together with the
-validation metadata a caller needs to decide whether the calibration is
-trustworthy. Frozen and slotted, so an instance is safe to share across
-threads or to persist via :mod:`src.calibration.serialization`.
+``Frame.CAMERA -> Frame.BASE``, translation in millimetres, together with the
+residuals, sample count and rig identity a caller weighs before trusting the
+solve. Frozen and slotted, so an instance is safe to share across threads and
+to persist via :mod:`src.calibration.serialization`.
 """
 
 from __future__ import annotations
@@ -42,25 +42,29 @@ EXTRINSICS_SCHEMA: str = "willy.calibration.extrinsics/1"
 class Extrinsics:
     """Typed result of an eye-to-hand calibration.
 
+    ``__post_init__`` rejects every field that would make the solve
+    unreadable downstream, so an instance that exists is well formed.
+
     Attributes
     ----------
     transform :
         Rigid transform with ``from_frame == Frame.CAMERA`` and
         ``to_frame == Frame.BASE``. Translation is in millimetres.
     rmse_mm :
-        Validation RMSE in millimetres (must be >= 0, finite).
+        Validation RMSE in millimetres, finite and >= 0.
     max_error_mm :
-        Worst-case residual in millimetres on the validation set.
+        Worst residual in millimetres on the validation set. Never below
+        ``rmse_mm``.
     num_samples :
         Number of (move, marker) samples accepted by the solver. Must
         be > 0.
     captured_at :
-        Timezone-aware UTC timestamp of the solve.
+        Timestamp of the solve. Must be timezone-aware; UTC preferred.
     rig_id :
         Identifier of the camera rig this calibration belongs to.
     quality :
-        One of :data:`QUALITY_LABELS`. Use :meth:`from_solver` to
-        compute it automatically from ``rmse_mm``.
+        One of :data:`QUALITY_LABELS`. :meth:`from_solver` derives it
+        from ``rmse_mm``; direct construction leaves it ``unknown``.
     schema_version :
         Wire-format version. Pinned to :data:`EXTRINSICS_SCHEMA`.
     """
@@ -129,7 +133,8 @@ class Extrinsics:
                 f"schema_version must be {EXTRINSICS_SCHEMA!r}, got {self.schema_version!r}"
             )
 
-        # Normalise floats so round-tripping through JSON stays bit-stable.
+        # Store the coerced floats on the frozen instance, so a round-trip
+        # through JSON stays bit-stable.
         object.__setattr__(self, "rmse_mm", rmse)
         object.__setattr__(self, "max_error_mm", max_err)
 
@@ -151,8 +156,8 @@ class Extrinsics:
     ) -> Extrinsics:
         """Build an :class:`Extrinsics` from raw solver outputs.
 
-        ``quality`` is derived from ``rmse_mm`` via the supplied
-        :class:`QualityBandsMm`. ``captured_at`` defaults to ``now(UTC)``.
+        ``quality`` comes from :func:`classify_rmse` over ``rmse_mm`` and
+        ``bands``; ``captured_at`` defaults to ``now(UTC)``.
         """
         ts = captured_at if captured_at is not None else datetime.now(UTC)
         quality = classify_rmse(rmse_mm, bands)
@@ -173,14 +178,15 @@ class Extrinsics:
     def apply_pose(self, pose: Pose) -> Pose:
         """Map a camera-frame :class:`Pose` into the base frame.
 
-        Raises :class:`FrameMismatchError` (via :meth:`Transform.apply_pose`)
-        if ``pose.frame`` is not ``Frame.CAMERA``.
+        ``pose.frame`` must be ``Frame.CAMERA``; :meth:`Transform.apply_pose`
+        raises :class:`FrameMismatchError` otherwise.
         """
         return self.transform.apply_pose(pose)
 
     def apply_point_mm(self, point_camera_mm) -> np.ndarray:
         """Map a 3-D camera-frame point (mm) into the base frame.
 
-        Returns a fresh ``(3,) float64`` array.
+        Takes any array-like of three millimetre coordinates and returns a
+        fresh ``(3,) float64`` array.
         """
         return self.transform.apply_point(np.asarray(point_camera_mm, dtype=np.float64))

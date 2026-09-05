@@ -1,4 +1,4 @@
-"""Explicit eye-hand calibration workflows."""
+"""Eye-hand calibration: the two calibrators, the sample dataset, the typed results."""
 
 from __future__ import annotations
 

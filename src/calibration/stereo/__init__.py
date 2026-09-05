@@ -1,4 +1,8 @@
-"""Stereo calibration, rectification, reconstruction, and marker pose API."""
+"""Stereo calibration, rectification, reconstruction and marker pose.
+
+`StereoCam3D` is the entry point: it builds one `StereoRigRunTime` per configured
+rig through `StereoRigFactory` and addresses them by index.
+"""
 
 from __future__ import annotations
 

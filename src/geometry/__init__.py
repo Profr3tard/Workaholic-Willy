@@ -1,20 +1,21 @@
-"""The geometry subsystem: vendor-neutral, frame-safe pose and transform primitives.
+"""Workaholic-Willy geometry subsystem: vendor-neutral, frame-safe pose and
+transform primitives.
 
 This package owns the canonical 3D representations used across the stack:
 
 * :class:`Frame`      coordinate frames, as an enum.
-* :class:`Pose`       6-DoF rigid pose, position plus orientation plus frame.
-* :class:`Transform`  typed rigid transform between two frames.
+* :class:`Pose`       a 6-DoF rigid pose: position, orientation and frame.
+* :class:`Transform`  a typed rigid transform between two frames.
 
-It knows nothing about robot vendors, OpenCV, ROS or web frameworks. See
-``README.md`` for the full ownership contract.
+It knows nothing about robot vendors, OpenCV, ROS, FastAPI or pipelines. See
+``README.md`` for the full ownership and non-ownership contract.
 
-Numerics:
+Numerics, on every public value:
 
-* Translation is in millimetres, ``float64``.
-* Orientation is a unit XYZW quaternion, ``float64``, with canonical sign.
-* Angles are in radians.
-* Every public ndarray is read-only after construction.
+* Translation in millimetres, ``float64``.
+* Orientation as a unit XYZW quaternion, ``float64``, canonical sign.
+* Angles in radians.
+* Arrays are read-only once constructed.
 """
 
 from __future__ import annotations

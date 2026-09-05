@@ -1,15 +1,16 @@
 """RGB-D runtime streamers: a generic OpenCV backend and an Intel RealSense backend.
 
-Both return the canonical :class:`RGBDFrame` (BGR colour + uint16 millimetre depth),
-so :class:`~src.camera.orchestration.frame_provider.FrameProvider` can select
-either via ``RGBDDeviceRigConfig.rgbd_backend`` without the rest of the pipeline caring.
+Both return the canonical :class:`RGBDFrame`, BGR colour plus uint16 millimetre depth,
+so :class:`~src.camera.orchestration.frame_provider.FrameProvider` selects between them
+on ``RGBDDeviceRigConfig.rgbd_backend`` and the rest of the pipeline sees one frame type.
 
-* :class:`OpenCvRGBDStreamer`, a generic ``cv2.VideoCapture`` + OpenNI depth channel.
-  No vendor SDK; depth is only available when the OpenCV build exposes it.
-* :class:`RealSenseRGBDStreamer`, Intel RealSense via ``pyrealsense2`` (hardware-aligned
-  depth, device depth-scale, emitter/laser/preset control, a post-processing filter
-  chain, intrinsics). The SDK import is deferred so this module stays importable
-  without it, and the librealsense round-trip itself needs a physical device.
+* :class:`OpenCvRGBDStreamer` reads colour and depth through ``cv2.VideoCapture`` and the
+  OpenNI retrieve flags. No vendor SDK, so depth exists only where the build exposes it.
+* :class:`RealSenseRGBDStreamer` drives Intel RealSense through ``pyrealsense2``:
+  hardware-aligned depth, device depth-scale, emitter and laser and preset control, a
+  post-processing filter chain, intrinsics. The SDK import is deferred, so this module
+  imports without it; the librealsense round-trip itself needs a physical device, and is
+  validated on one.
 """
 
 from __future__ import annotations
@@ -40,14 +41,13 @@ class RGBDStreamerProtocol(Protocol):
 # ------------------------------------------------------------------
 
 class OpenCvRGBDStreamer:
-    """Generic RGB-D streamer over ``cv2.VideoCapture`` (OpenNI depth channels).
+    """Generic RGB-D streamer over ``cv2.VideoCapture`` and the OpenNI depth channels.
 
-    Returns colour and depth frames when the OpenCV backend exposes depth via the
-    ``CAP_OPENNI_*`` retrieve flags. It does not talk to any vendor SDK, so on a
-    device whose depth is only reachable through its native SDK (e.g. a RealSense
-    over librealsense) the depth channel comes back empty; use
-    :class:`RealSenseRGBDStreamer` there. Quality settings from ``quality.py`` are
-    applied to the colour stream.
+    Depth arrives only when the OpenCV build exposes it through the ``CAP_OPENNI_*``
+    retrieve flags. No vendor SDK is involved, so a device whose depth is reachable
+    only through its native SDK, a RealSense over librealsense for one, hands back an
+    empty depth channel here; :class:`RealSenseRGBDStreamer` covers that device.
+    Colour stream settings come from ``quality.configure_camera_for_quality``.
     """
 
     def __init__(self, config: RGBDDeviceRigConfig):
@@ -87,9 +87,9 @@ class OpenCvRGBDStreamer:
             disable_auto_features=q.disable_auto_features,
             warmup_frames=q.warmup_frames,
         )
-        # Fail closed if the device did not honour the requested colour resolution
-        # (mirrors SingleDeviceStreamer._validate_settings). Depth resolution is not
-        # verifiable through this single-VideoCapture path and stays unchecked.
+        # Fail closed when the device did not honour the requested colour resolution,
+        # as SingleDeviceStreamer._validate_settings does. Depth resolution cannot be
+        # read back through this single VideoCapture, so it stays unchecked.
         if (settings["width"], settings["height"]) != self.color_res:
             raise ValueError(
                 f"RGB-D colour resolution mismatch: "
@@ -123,11 +123,11 @@ class OpenCvRGBDStreamer:
     # ------------------------------------------------------------------
 
     def grab(self) -> RGBDFrame:
-        """Grab a colour frame and its associated depth map.
+        """Grab a colour frame and its depth map.
 
-        The colour image is retrieved from channel 0 and the depth map from channel 1
-        (CAP_OPENNI_DEPTH_MAP). When depth is not available the depth array is empty,
-        shape ``(0,)``.
+        Colour is retrieved with ``CAP_OPENNI_BGR_IMAGE`` and depth with
+        ``CAP_OPENNI_DEPTH_MAP``. A backend or device without depth yields an empty
+        depth array of shape ``(0,)`` rather than an error.
 
         Returns:
             RGBDFrame with .color (BGR uint8) and .depth (uint16 mm).
@@ -140,12 +140,12 @@ class OpenCvRGBDStreamer:
         if not ok:
             raise RuntimeError("Failed to grab frame from RGB-D device.")
 
-        # Colour channel
         _, color = self._cap.retrieve(flag=cv.CAP_OPENNI_BGR_IMAGE)
         if color is None:
             raise RuntimeError("Failed to retrieve colour frame from RGB-D device.")
 
-        # Depth channel; not every backend or device exposes one
+        # Not every backend or device carries a depth channel, so a missing one is an
+        # expected result rather than a failure.
         _, depth = self._cap.retrieve(flag=cv.CAP_OPENNI_DEPTH_MAP)
         if depth is None:
             self.logger.debug("Depth channel not available, returning empty array.")
@@ -173,12 +173,12 @@ class OpenCvRGBDStreamer:
 class RealSenseRGBDStreamer:
     """Intel RealSense RGB-D streamer over ``pyrealsense2``.
 
-    Streams hardware time-synced BGR colour + Z16 depth, optionally aligned to the
-    colour frame, converts depth to uint16 millimetres via the device depth-scale,
-    and applies the configured post-processing filter chain. The ``pyrealsense2``
-    import is deferred (see :meth:`_import_rs`) so importing this module never
-    requires the SDK; ``rs_module`` substitutes a stand-in, so the driver logic
-    runs without hardware.
+    Streams hardware time-synced BGR colour and Z16 depth, optionally aligned to the
+    colour frame, converts depth to uint16 millimetres with the device depth-scale and
+    runs the configured post-processing filter chain. The SDK import is deferred to
+    :meth:`_import_rs`, so importing this module never requires ``pyrealsense2``, and
+    ``rs_module`` substitutes a stand-in for it, which runs the driver logic with no
+    hardware attached.
     """
 
     def __init__(self, config: RGBDDeviceRigConfig, *, rs_module: Any | None = None) -> None:
@@ -205,7 +205,7 @@ class RealSenseRGBDStreamer:
     # ------------------------------------------------------------------
 
     def _import_rs(self) -> Any:
-        """Return the ``pyrealsense2`` module, or ``rs_module`` if one was given, importing lazily."""
+        """Return the injected ``rs_module`` if there is one, else import ``pyrealsense2``."""
         if self._rs is not None:
             return self._rs
         try:
@@ -224,7 +224,7 @@ class RealSenseRGBDStreamer:
     # ------------------------------------------------------------------
 
     def open(self) -> None:
-        """Start the RealSense pipeline and configure depth sensor + filters."""
+        """Start the pipeline, configure the depth sensor and filters, then read intrinsics."""
         rs = self._import_rs()
 
         rs_config = rs.config()
@@ -279,7 +279,7 @@ class RealSenseRGBDStreamer:
     # ------------------------------------------------------------------
 
     def grab(self) -> RGBDFrame:
-        """Grab an (optionally aligned + filtered) colour/depth pair as an RGBDFrame."""
+        """Grab a colour and depth pair, aligned and filtered as configured, as an RGBDFrame."""
         if self._pipeline is None:
             raise RuntimeError("Device is not open. Call open() first.")
 
@@ -309,10 +309,11 @@ class RealSenseRGBDStreamer:
         return None if self._intrinsics is None else self._intrinsics.copy()
 
     def get_distortion(self) -> np.ndarray | None:
-        """Return the colour-stream distortion coefficients (Brown-Conrady, available after ``open()``).
+        """Return the colour-stream Brown-Conrady coefficients (available after ``open()``).
 
-        ``None`` if the device did not report them; a PnP solve should then pass ``np.zeros(5)``. On
-        the aligned colour stream they are typically near zero, measured rather than assumed.
+        ``None`` when the device reported none, and a PnP solve should then pass
+        ``np.zeros(5)``. The aligned colour stream typically reports near-zero coefficients,
+        read off the device rather than assumed.
         """
         return None if self._distortion is None else self._distortion.copy()
 
@@ -333,10 +334,11 @@ class RealSenseRGBDStreamer:
 
     @staticmethod
     def _match_color_size(depth: np.ndarray, color: np.ndarray) -> np.ndarray:
-        """Nearest-resize depth to the colour grid so RGBDFrame's size invariant holds.
+        """Resize depth onto the colour grid so the RGBDFrame size invariant holds.
 
-        Applies only when the two sizes differ, after decimation or on an un-aligned
-        native depth resolution. Nearest interpolation leaves depth values intact.
+        Only bites when depth and colour differ, once decimation has shrunk depth or on an
+        un-aligned native depth resolution, and is a no-op when the sizes already match.
+        Nearest interpolation keeps the depth values intact.
         """
         if depth.shape[:2] != color.shape[:2]:
             h, w = color.shape[:2]
@@ -359,10 +361,10 @@ class RealSenseRGBDStreamer:
             self._apply_visual_preset(rs, sensor, self.rs_cfg.visual_preset)
 
     def _apply_visual_preset(self, rs: Any, sensor: Any, preset: str) -> None:
-        """Best-effort depth visual-preset selection by (case-insensitive) name.
+        """Select a depth visual preset by name, matched case-insensitively.
 
         The preset enum is device-family specific, so an unknown name is logged and
-        skipped rather than raised.
+        skipped rather than raised: a bad preset name must not take the stream down.
         """
         if not sensor.supports(rs.option.visual_preset):
             self.logger.warning("Device does not support visual_preset; ignoring %r", preset)
@@ -399,12 +401,12 @@ class RealSenseRGBDStreamer:
         return filters
 
     def _read_intrinsics(self, rs: Any, profile: Any) -> np.ndarray | None:
-        """Read the colour-stream 3x3 K matrix from the active profile, and store its distortion.
+        """Read the colour-stream 3x3 K matrix from the active profile and store its distortion.
 
         The D435 ships factory-calibrated and reports ``intr.coeffs``, the 5-term Brown-Conrady
-        distortion, right next to fx/fy/ppx/ppy. It is stored for :meth:`get_distortion` so a
-        downstream ArUco/PnP solve uses the device's own coefficients instead of assuming zero
-        (decision D1).
+        distortion, right next to fx, fy, ppx and ppy. Storing it is what lets
+        :meth:`get_distortion` hand a downstream ArUco or PnP solve the device's own
+        coefficients instead of a zero vector, as decision D1 requires.
         """
         try:
             stream = profile.get_stream(rs.stream.color).as_video_stream_profile()
@@ -435,8 +437,8 @@ class RealSenseRGBDStreamer:
                 "cy": float(k[1, 2]),
                 "width": int(self.color_res[0]),
                 "height": int(self.color_res[1]),
-                # The factory distortion, persisted so `load_intrinsics` can hand a PnP solve the real
-                # coefficients rather than an assumed zero vector. Empty list if the device gave none.
+                # The factory distortion, persisted so `load_intrinsics` hands a PnP solve the
+                # device's own coefficients. An empty list where the device reported none.
                 "dist": [] if self._distortion is None else [float(c) for c in self._distortion],
             },
             path,

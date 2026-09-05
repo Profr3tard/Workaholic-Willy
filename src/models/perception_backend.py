@@ -1,17 +1,16 @@
 """One seam between "a prompt" and "masks", so a pipeline is a choice rather than an assembly.
 
 The two-stage chain, ``detect_all(bgr, prompt)`` followed by ``segment_detection(bgr, det)`` per
-detection, lives here rather than in every caller that wants perception. A
-:class:`PerceptionBackend` is that loop, named and owned:
+detection, lives here instead of in each caller. A :class:`PerceptionBackend` is that loop, named
+and owned:
 
     backend = build_perception(models_cfg)
     objects = backend.perceive(image_bgr, "a green cube")
 
-Pairs and not just masks: ``perceive`` returns ``(detection, segmentation)`` because callers need
-both. The real cell fills an incomplete mask back out to the detection box when SAM2 drops one end of
-a long object (a measured ~22 mm centroid shift -> an off-centre grasp -> no lift), and masks alone
-would leave that fixup guessing. A backend whose model produces masks natively, with no box stage,
-synthesises the detection from the mask's own bounding box, which is what the box would have been.
+``perceive`` returns pairs, ``(detection, segmentation)``, because callers consume both: the real
+cell fills an incomplete mask back out to the detection box when SAM2 drops one end of a long object
+(a measured ~22 mm centroid shift, an off-centre grasp, no lift). A backend whose model produces
+masks natively, with no box stage, synthesises the detection from the mask's own bounding box.
 
 This module does not import torch. It is the contract, not the models; the wrappers stay behind the
 lazy imports in :mod:`src.models.factory`.
@@ -35,11 +34,10 @@ __all__ = ["PerceivedObject", "PerceptionBackend", "TwoStageBackend"]
 
 @dataclass(frozen=True, slots=True)
 class PerceivedObject:
-    """One grounded object: where the model said it is, and the mask that was cut for it.
+    """One grounded object: the detection box and the mask cut for it.
 
-    Both halves travel together because both are consumed. The mask is what the grasp calculator
-    reads; the detection box is what a caller compares the mask against to decide whether the mask is
-    trustworthy.
+    Both halves travel together because both are consumed. The grasp calculator reads the mask; a
+    caller compares the mask against the box to decide whether the mask is trustworthy.
     """
 
     detection: "Detection"
@@ -50,18 +48,16 @@ class PerceivedObject:
 class PerceptionBackend(Protocol):
     """Prompt in, grounded objects out. The whole perception contract.
 
-    Implementations are constructed from config by
-    :func:`src.models.factory.build_perception` and hold whatever models they need. They are
-    stateful only in the sense that they own loaded weights; ``perceive`` itself is a pure function
-    of its arguments.
+    :func:`src.models.factory.build_perception` constructs an implementation from config, and the
+    implementation holds whatever models it needs. Loaded weights are its only state; ``perceive``
+    is a pure function of its arguments.
     """
 
     def perceive(self, image_bgr: Any, prompt: str) -> tuple[PerceivedObject, ...]:
         """Ground ``prompt`` in ``image_bgr``. Returns ``()`` when nothing matched.
 
-        An empty result is a legitimate answer, not an error: downstream the pick loop reports
-        ``no_perception`` and moves on, which is the honest outcome when the scene does not contain
-        what was asked for.
+        An empty result is an answer, not an error: the pick loop reports ``no_perception`` and
+        moves on, the honest outcome when the scene does not contain what was asked for.
         """
         ...
 
@@ -69,24 +65,23 @@ class PerceptionBackend(Protocol):
 class TwoStageBackend:
     """Detector then segmenter, the two-stage chain.
 
-    Two behaviours look like omissions and are not:
+    Two failures are swallowed rather than raised:
 
-    * a detector failure yields no objects rather than raising, so a model error surfaces downstream
-      as an honest ``no_valid_grasp`` instead of a traceback in the middle of a pick;
-    * a single segmentation failure skips that object and keeps the rest, because one bad mask in a
-      cluttered bin should not discard the objects that segmented fine.
+    * a detector failure yields no objects, so a model error surfaces downstream as
+      ``no_valid_grasp`` instead of a traceback in the middle of a pick;
+    * a single segmentation failure skips that object and keeps the rest, so one bad mask in a
+      cluttered bin does not discard the objects that segmented fine.
 
-    Detections are deliberately not de-duplicated. A multi-phrase prompt grounds neighbour clutter on
-    purpose: the dense sampler needs to know what else is in the bin.
+    Detections are not de-duplicated. A multi-phrase prompt grounds neighbour clutter on purpose:
+    the dense sampler needs to know what else is in the bin.
     """
 
     def __init__(self, detector: Any, segmenter: Any) -> None:
         self.detector = detector
         self.segmenter = segmenter
-        # The seam's own log. Both swallow-and-continue paths below are deliberate and both are
-        # silent downstream: a pick that failed because every mask was dropped and a pick that failed
-        # because the bin was empty both arrive as `no_perception`. These lines are the only place
-        # that difference is recorded.
+        # The seam's own log. Both swallow-and-continue paths below are silent downstream: a pick
+        # that dropped every mask and a pick over an empty bin both arrive as `no_perception`, and
+        # these lines are the only place that difference is recorded.
         self.logger = create_logger(
             "TwoStageBackend", log_file=PERCEPTION_BACKEND_LOG_FILE, log_dir=MODELS_LOG_DIR,
         )
@@ -96,18 +91,18 @@ class TwoStageBackend:
         try:
             detections = self.detector.detect_all(image_bgr, prompt)
         except Exception:  # noqa: BLE001 (a model error emits no object (honest no_valid_grasp))
-            # Returned as `()`, never raised, so this is the only record the exception leaves;
-            # hence the traceback rather than a one-line message.
+            # The failure returns `()` and never raises, so this line is the only record of the
+            # exception; hence a full traceback rather than a one-line message.
             self.logger.exception("detector failed for prompt %r, perceiving nothing", prompt)
             return ()
 
         objects: list[PerceivedObject] = []
         # Counted, not logged per detection: a cluttered multi-phrase prompt grounds a dozen-plus
-        # boxes and one line each would drown the file. One aggregate line after the loop instead.
+        # boxes, and one line each would drown the file. One aggregate line follows the loop.
         seg_failures = 0
         first_seg_error = ""
         # Counted rather than `len(detections)`: the detector is duck-typed, and a backend that
-        # yields its boxes would turn a length check into a crash on a path that must not have one.
+        # yields its boxes has no length to take on a path that must not crash.
         n_detections = 0
         for detection in detections:
             n_detections += 1

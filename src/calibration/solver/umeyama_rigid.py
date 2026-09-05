@@ -1,12 +1,13 @@
 """
 Umeyama rigid-body point registration.
 
-Pure-numpy; no OpenCV dependency. Finds the rotation ``R`` and translation
-``t`` such that ``dst ~= R @ src + t`` in a least-squares sense.
+Finds the rotation ``R`` and the translation ``t`` that minimise the squared
+error of ``dst ~= R @ src + t``. Rotation and translation only, no scale
+factor. Numpy only, with no OpenCV dependency.
 
-The algorithm is the closed-form SVD solution described in Umeyama (1991)
-"Least-Squares Estimation of Transformation Parameters Between Two Point
-Patterns", IEEE TPAMI 13(4):376-380.
+The closed-form SVD solution is Umeyama (1991), "Least-Squares Estimation of
+Transformation Parameters Between Two Point Patterns", IEEE TPAMI
+13(4):376-380.
 """
 
 from __future__ import annotations
@@ -22,19 +23,17 @@ logger = create_logger("UmeyamaRigid", UMEYAMA_RIGID_LOG_FILE, log_dir=CALIBRATI
 
 
 class UmeyamaRigid:
-    """Optimal rigid registration between two corresponding 3-D point sets.
-
-    Solves: ``dst ~= R @ src + t``   (least-squares sense, no scale).
+    """Rigid registration between two corresponding 3-D point sets.
 
     Usage::
 
         solver = UmeyamaRigid()
         R, t, rmse = solver.solve(pts_src, pts_dst)
 
-    Constraints:
-
-    * At least 3 non-collinear point pairs.
-    * ``pts_src.shape == pts_dst.shape`` with ``shape[1] == 3``.
+    The caller owes at least 3 non-collinear point pairs and
+    ``pts_src.shape == pts_dst.shape`` with ``shape[1] == 3``. Correspondence
+    is by row index: row *i* of one array is the same physical point as row
+    *i* of the other.
     """
 
     def solve(
@@ -49,16 +48,18 @@ class UmeyamaRigid:
         pts_src:
             (N, 3) source point cloud.
         pts_dst:
-            (N, 3) target point cloud; same ordering as *pts_src*.
+            (N, 3) target point cloud, in the same row order as *pts_src*.
 
         Returns
         -------
         R:
-            (3, 3) rotation matrix in SO(3).
+            (3, 3) rotation matrix in SO(3). A reflection in the SVD result is
+            flipped out before it is returned.
         t:
-            (3,) translation vector in the same unit as the inputs.
+            (3,) translation vector in the unit of the inputs.
         rmse:
-            Root-mean-square residual error (same unit as inputs).
+            Root-mean-square residual over the N pairs, in the unit of the
+            inputs.
 
         Raises
         ------
@@ -100,8 +101,8 @@ class UmeyamaRigid:
         residuals = dst - (src @ R.T + t)
         rmse = float(np.sqrt(np.mean(np.sum(residuals ** 2, axis=1))))
 
-        # The residual is the only evidence that the two point sets really correspond:
-        # a registration on mismatched orderings still returns a valid R, t.
+        # The residual is the only evidence that the two point sets really correspond.
+        # A mismatched row ordering still yields a valid R and t, and raises nothing.
         logger.info(
             "Registered %d point pairs: rmse=%.4f, |t|=%.4f (input units).",
             src.shape[0],

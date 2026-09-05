@@ -13,8 +13,9 @@ __all__ = ["now_ms", "timed"]
 def now_ms() -> float:
     """Monotonic milliseconds since an arbitrary epoch.
 
-    Measure durations with this rather than with ``time.time() * 1000``, which
-    is wall-clock and can jump backwards on an NTP correction.
+    Only differences are meaningful. Measure durations with this rather than
+    ``time.time() * 1000``, which is wall-clock and can jump backwards on an
+    NTP correction.
     """
     return time.perf_counter() * 1000.0
 
@@ -26,10 +27,11 @@ def timed(
     logger: logging.Logger | None = None,
     level: int = logging.DEBUG,
 ) -> Iterator[dict]:
-    """Context manager that measures wall-clock elapsed time.
+    """Context manager that measures elapsed wall-clock time.
 
-    Yields a dict that carries ``elapsed_ms`` once the block exits, and
-    optionally logs one line at ``level`` on the given logger.
+    Yields a dict whose ``elapsed_ms`` is filled in when the block exits, so it
+    reads as zero inside the block. With a ``logger``, one line is written at
+    ``level`` on the way out.
 
     Example::
 

@@ -18,16 +18,15 @@ def configure_camera_for_quality(
     disable_auto_features: bool = True,
     warmup_frames: int = 30
 ) -> dict:
-    """
-    Configure an already opened OpenCV VideoCapture for image quality and low latency.
+    """Configure an already opened VideoCapture for image quality and low latency.
 
     Sets the pixel format, resolution and frame rate, then the optional manual exposure,
     gain and white balance, disabling the corresponding automatic features first.
 
     Not every camera, driver or OpenCV backend supports every property, and a ``cap.set(...)``
     that reports success does not guarantee the value was applied. The active settings are
-    therefore read back off the device afterwards and returned, so the caller can check what
-    it actually got rather than what it asked for.
+    therefore read back off the device and returned, so a caller can compare what it got
+    against what it asked for.
 
     Args:
         cap: An already opened VideoCapture.
@@ -44,9 +43,9 @@ def configure_camera_for_quality(
         warmup_frames: Frames to grab before the settings are read back.
 
     Returns:
-        The settings read back from the device, holding the raw fourcc integer, the same
-        value decoded as a four character string, the format actually requested, and the
-        image and image-processing properties. Keys: ``fourcc``, ``fourcc_str``,
+        The settings read back from the device: the raw fourcc integer, the same value
+        decoded as a four character string, the requested code that read back as taken,
+        and the image and image-processing properties. Keys: ``fourcc``, ``fourcc_str``,
         ``selected_fourcc_requested``, ``width``, ``height``, ``fps``, ``auto_exposure``,
         ``exposure``, ``gain``, ``auto_wb``, ``wb_blue_u``, ``autofocus``, ``brightness``,
         ``contrast``, ``saturation``, ``sharpness``.
@@ -59,7 +58,8 @@ def configure_camera_for_quality(
     if not cap.isOpened():
         raise RuntimeError("Camera is not opened")
 
-    # Preferred pixel format
+    # Pixel format. The requested code counts as taken only when reading it back returns it,
+    # so selected_fourcc stays None when the device kept its own format.
     preferred_fourccs = ["YUY2", "YUYV"] if prefer_uncompressed else ["MJPG"]
     selected_fourcc = None
 
@@ -75,7 +75,7 @@ def configure_camera_for_quality(
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, height)
     cap.set(cv.CAP_PROP_FPS, fps)
 
-    # Disable auto features, where the backend implements them at all.
+    # Auto features go off first, where the backend implements them at all.
     if disable_auto_features:
         # 0.25 selects manual exposure and 0.75 auto on most backends, but the mapping is
         # backend and camera specific.
@@ -93,10 +93,10 @@ def configure_camera_for_quality(
     if manual_wb is not None:
         cap.set(cv.CAP_PROP_WHITE_BALANCE_BLUE_U, manual_wb)
 
-    # Small buffer for lower latency
+    # One frame of buffer, so a grab returns the newest image rather than a queued one.
     cap.set(cv.CAP_PROP_BUFFERSIZE, 1)
 
-    # Warm up the camera before the settings are read back.
+    # Warm the camera up before the settings are read back.
     for _ in range(warmup_frames):
         cap.grab()
     cap.retrieve()
