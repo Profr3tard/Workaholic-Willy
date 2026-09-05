@@ -20,7 +20,7 @@ from src.calibration.exceptions import StereoCalibrationError
 from src.utility.log_cfg import create_logger
 
 if TYPE_CHECKING:  # pragma: no cover (typing only)
-    from backend.config.schema.camera import StereoMatcherConfig
+    from config.schema.camera import StereoMatcherConfig
 
 __all__ = ["StereoRigFactory"]
 
