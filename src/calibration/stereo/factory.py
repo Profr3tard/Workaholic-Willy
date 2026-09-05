@@ -115,7 +115,7 @@ class StereoRigFactory:
         self.repository.save(stereomap_file, calib_result, None)
         self.logger.info("[Rig] Calibration saved -> %s", stereomap_file)
         logger.info(
-            "Stereomap written: %s (%d bytes, no extrinsics -- hand-eye still owes a CAMERA->BASE).",
+            "Stereomap written: %s (%d bytes, no extrinsics, hand-eye still owes a CAMERA->BASE).",
             stereomap_file,
             stereomap_file.stat().st_size,
         )
